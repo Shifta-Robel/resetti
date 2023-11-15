@@ -1,8 +1,7 @@
 use std::net::Ipv4Addr;
-
 use pcap::Packet;
 
-pub fn is_ipv4(packet: &Packet) -> bool{
+pub fn is_ipv4(packet: &Packet) -> bool {
     let ip_header = &packet.data[14..34];
     let ip_version = (ip_header[0] & 0b11110000) >> 4;
     ip_version == 4
@@ -17,6 +16,14 @@ pub fn ack_enabled(packet: &Packet) -> bool{
     ack
 }
 
+// pub fn get_flag(packet: &Packet) -> u8 {
+//     let tcp_header = &packet.data[34..]; // 34..54
+//     let flags = tcp_header[13];
+//     // let src_port_bytes = [tcp_header[0], tcp_header[1]];
+//     // let src_port = u16::from_be_bytes(src_port_bytes);
+//     flags
+// }
+//
 pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
     let (src_ip, _src_port, src_mac, dst_ip, _dst_port, dst_mac) = src_dst_details(&packet);
     let (seq_num, ack_num, _window_size) = tcp_details(&packet);
