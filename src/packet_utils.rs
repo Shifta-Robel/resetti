@@ -20,35 +20,38 @@ pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
     let (_, ack_num, window_size, _) = tcp_details(&packet);
 
     let mut pkt = Vec::with_capacity(54);
-    pkt.extend_from_slice(dst_mac);
     pkt.extend_from_slice(src_mac);
+    pkt.extend_from_slice(dst_mac);
     pkt.extend_from_slice(&[0x08, 0x00]);
 
     // IP header
     pkt.extend_from_slice(&[
                           0x45, // IP version & header length
                           0x00, // DSCP and ECN
-                          0x00, 0x14, // Total lenght
-                          0x06, 0x50, // Identification - dontt forget to set this to a unique value later !!!!!!
+                          0x00, 0x28, // Total lenght
+                          0x06, 0x50, // Identification - dontt forget to set this to a unique value later !!!
                           0x40, 0x00, // Flags & fragment offset
                           0x3c, 0x06, // TTL adn protocol(TCP)
                           0x00, 0x00, // temporary Header checksum
     ]);
-    pkt.extend_from_slice(&src_ip.octets());
     pkt.extend_from_slice(&dst_ip.octets());
+    pkt.extend_from_slice(&src_ip.octets());
 
-    let ip_checksum = checksum(&pkt[14..33]);
+    let ip_checksum = checksum(&pkt[14..34]);
     pkt[24..26].copy_from_slice(&ip_checksum.to_be_bytes());
 
     // TCP section
-    pkt.extend_from_slice(&src_port.to_be_bytes());
     pkt.extend_from_slice(&dst_port.to_be_bytes());
-    pkt.extend_from_slice(&(seq_num + 1).to_be_bytes());
-    pkt.extend_from_slice(&(ack_num - ack_num).to_be_bytes());
+    pkt.extend_from_slice(&src_port.to_be_bytes());
+    // pkt.extend_from_slice(&(seq_num + payload_len as u32 + 1).to_be_bytes());
+    pkt.extend_from_slice(&(ack_num).to_be_bytes());
+    // pkt.extend_from_slice(&(ack_num + packet.len() as u32).to_be_bytes());
+    pkt.extend_from_slice(&[0x00,0x00,0x00,0x00]); // ack 0
     // pkt.extend_from_slice(&[0x50, 0x00]); // data offset and reserved
-    pkt.extend_from_slice(&[0b00010100]); // data offset and reserved
-    pkt.extend_from_slice(&[0b00010100]); // flag
-                                          // pkt.push(0b00000100);
+    // pkt.extend_from_slice(&[0b00010100]); // data offset and reserved
+    pkt.extend_from_slice(&[0x50]); // data offset and reserved
+    pkt.extend_from_slice(&[0b00000100]); // flag
+
     pkt.extend_from_slice(&window_size.to_be_bytes());
     pkt.extend_from_slice(&[0x00, 0x00]); // initial tcp checksum
     pkt.extend_from_slice(&[0x00, 0x00]); // urgency
