@@ -10,24 +10,14 @@ pub fn is_ipv4(packet: &Packet) -> bool {
 pub fn ack_enabled(packet: &Packet) -> bool {
     let tcp_header = &packet.data[34..54];
     let flags = tcp_header[13];
-    // let rst = (flags & 0b00000100) != 0;
-    // let fin = (flags & 0b00000001) != 0;
     let ack = (flags & 0b00010000) == 16;
     println!("checking ack : {:#010b} evaluated {ack}", flags);
     ack
 }
 
-// pub fn get_flag(packet: &Packet) -> u8 {
-//     let tcp_header = &packet.data[34..]; // 34..54
-//     let flags = tcp_header[13];
-//     // let src_port_bytes = [tcp_header[0], tcp_header[1]];
-//     // let src_port = u16::from_be_bytes(src_port_bytes);
-//     flags
-// }
-//
 pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
     let (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac) = src_dst_details(&packet);
-    let (seq_num, ack_num, window_size) = tcp_details(&packet);
+    let (_, ack_num, window_size, _) = tcp_details(&packet);
 
     let mut pkt = Vec::with_capacity(54);
     pkt.extend_from_slice(dst_mac);
@@ -68,15 +58,50 @@ pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
     pseudo_ip_header.extend_from_slice(&dst_ip.octets());
     pseudo_ip_header.extend_from_slice(&[0x00]); //fixed 8 bit
     pseudo_ip_header.extend_from_slice(&[0x06]); //protocol field
-    pseudo_ip_header.extend_from_slice(&[0x14]); //TCP segment length
+    pseudo_ip_header.extend_from_slice(&20u16.to_be_bytes()); //TCP segment length
     pseudo_ip_header.extend_from_slice(&pkt[34..]);
+    pseudo_ip_header[28] = 0;
+    pseudo_ip_header[29] = 0;
+    println!("rst packet");
+    for bytes in &pseudo_ip_header{
+        print!("{:02X} ", bytes);
+    }
 
     let tcp_checksum = checksum(&pseudo_ip_header);
+    println!("calculated rst checksum: {:X?}", tcp_checksum);
     pkt[50..52].copy_from_slice(&tcp_checksum.to_be_bytes());
 
     pkt
 }
 
+// pub fn packet_checksum(packet: &Packet) -> u16 {
+//     let (src_ip, _, _, dst_ip, _, _) = src_dst_details(&packet);
+//     let mut pseudo_ip_header: Vec<u8> = Vec::with_capacity(12);
+//     pseudo_ip_header.extend_from_slice(&src_ip.octets());
+//     pseudo_ip_header.extend_from_slice(&dst_ip.octets());
+//     pseudo_ip_header.extend_from_slice(&[0x00]); //fixed 8 bit
+//     pseudo_ip_header.extend_from_slice(&[0x06]); //protocol field
+//     let tcp_seg_len = packet.data[34..].len() as u16;
+//     println!("tcp_seg_len :{tcp_seg_len}");
+//     pseudo_ip_header.extend_from_slice(&tcp_seg_len.to_be_bytes()); //TCP segment length
+//     // append rest of tcp section on to the pseudo_ip_header
+//     println!("pseude header: {} after len",pseudo_ip_header.len());
+//     for bytes in &pseudo_ip_header {
+//         print!("{:02X} ", bytes);
+//     }
+//     pseudo_ip_header.extend_from_slice(&packet[34..]);
+//     pseudo_ip_header[28] = 0;
+//     pseudo_ip_header[29] = 0;
+//     println!("pseude header: {} after body",pseudo_ip_header.len());
+//     for bytes in &pseudo_ip_header {
+//         print!("{:02X} ", bytes);
+//     }
+//     println!("My tcp checksum : {:X?}",checksum(&pseudo_ip_header));
+//     let ics = internet_checksum::checksum(&pseudo_ip_header);
+//     println!("crate tcp checksum : {:X?},{:X?}",ics[0], ics[1]);
+//     checksum(&pseudo_ip_header)
+// }
+//
 pub fn checksum(bytes: &[u8]) -> u16 {
     let mut checksum: u32 = 0;
     for i in (0..bytes.len()-1).step_by(2) {
@@ -89,7 +114,7 @@ pub fn checksum(bytes: &[u8]) -> u16 {
     while checksum >> 16 != 0 {
         checksum = (checksum & 0xffff) + (checksum >> 16);
     }
-    println!("calculated checksum : {:X?}", checksum as u16);
+    println!("calculated checksum : {:X?}", !checksum as u16);
     !checksum as u16
 }
 
