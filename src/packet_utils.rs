@@ -148,7 +148,14 @@ pub fn src_dst_details<'a>(
     (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac)
 }
 
-pub fn tcp_details(packet: &Packet) -> (u32, u32, u16) {
+/// Extracts TCP details from a packet
+/// # Returns
+/// A tuple with
+/// * sequence number
+/// * ack number
+/// * window size
+/// * payload len
+pub fn tcp_details(packet: &Packet) -> (u32, u32, u16, usize) {
     let tcp_header = &packet.data[34..]; //54
     // println!("tcp_header size {:?}", tcp_header.len());
     let seq_num = u32::from_be_bytes([tcp_header[4], tcp_header[5], tcp_header[6], tcp_header[7]]);
@@ -161,7 +168,9 @@ pub fn tcp_details(packet: &Packet) -> (u32, u32, u16) {
         "seq_num: {}, ack_num: {}, window_size: {}",
         seq_num, ack_num, window_size
     );
-    (seq_num, ack_num, window_size)
+    let tcp_data_offset = tcp_header[12] >> 4;
+    let payload_len = packet.len() - (34 + (tcp_data_offset * 4)) as usize;
+    (seq_num, ack_num, window_size, payload_len)
 }
 
 // fn build_packet(
