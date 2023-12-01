@@ -22,6 +22,7 @@ fn main() {
     //open and filter
     let mut cap = cap.open().unwrap();
     let filter = "tcp";
+    // additional filter logic from config
     cap.filter(filter, true).unwrap();
 
     // start sniffing
@@ -29,27 +30,29 @@ fn main() {
     while let Ok(packet) = cap.next_packet(){
         // if count == 1 {break;}
         println!("packet: {:?}", packet.len());
-        if packet_utils::is_ipv4(&packet) && packet_utils::ack_enabled(&packet) {
-            println!("-----------------");
-            let rst = build_rst_packet_from(&packet);
-            let rp = Packet{
-                header: packet.header,
-                data: &rst
-            };
-            println!("sending packet:");
-            src_dst_details(&rp);
-            tcp_details(&rp);
-            println!("===========");
+        let (is_syn,is_ack) = packet_utils::syn_ack_flags(&packet);
 
-            if let Err(e) = cap.sendpacket(rst){
-                eprintln!("send-error: {:?}", e);
+        if packet_utils::is_ipv4(&packet) &&(is_syn || is_ack) {
+                println!("-----------------");
+                let rst = build_rst_packet_from(&packet, is_syn);
+                let rp = Packet{
+                    header: packet.header,
+                    data: &rst
+                };
+                println!("sending packet:");
+                src_dst_details(&rp);
+                tcp_details(&rp);
+                println!("===========");
+
+                if let Err(e) = cap.sendpacket(rst){
+                    eprintln!("send-error: {:?}", e);
+                }
+            }else{
+                println!("packet discarded");
+                continue;
             }
-        }else{
-            println!("packet discarded");
-            continue;
         }
         // count += 1;
         // println!("recieved packets: {}", count);
-    }
 
 }

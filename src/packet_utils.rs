@@ -7,17 +7,25 @@ pub fn is_ipv4(packet: &Packet) -> bool {
     ip_version == 4
 }
 
-pub fn ack_enabled(packet: &Packet) -> bool {
+pub fn syn_ack_flags(packet: &Packet) -> (bool, bool) {
     let tcp_header = &packet.data[34..54];
     let flags = tcp_header[13];
     let ack = (flags & 0b00010000) == 16;
-    println!("checking ack : {:#010b} evaluated {ack}", flags);
-    ack
+    let syn = (flags & 0b00000010) == 2;
+    (syn, ack)
 }
 
-pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
+// pub fn ack_enabled(packet: &Packet) -> bool {
+//     let tcp_header = &packet.data[34..54];
+//     let flags = tcp_header[13];
+//     let ack = (flags & 0b00010000) == 16;
+//     println!("checking ack : {:#010b} evaluated {ack}", flags);
+//     ack
+// }
+
+pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     let (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac) = src_dst_details(&packet);
-    let (_, ack_num, window_size, _) = tcp_details(&packet);
+    let (seq_num, ack_num, window_size, _) = tcp_details(&packet);
 
     let mut pkt = Vec::with_capacity(54);
     pkt.extend_from_slice(src_mac);
@@ -44,7 +52,8 @@ pub fn build_rst_packet_from(packet: &Packet) -> Vec<u8> {
     pkt.extend_from_slice(&dst_port.to_be_bytes());
     pkt.extend_from_slice(&src_port.to_be_bytes());
     // pkt.extend_from_slice(&(seq_num + payload_len as u32 + 1).to_be_bytes());
-    pkt.extend_from_slice(&(ack_num).to_be_bytes());
+    let rst_seq_num = &(if is_syn {seq_num + 1} else {ack_num}).to_be_bytes();
+    pkt.extend_from_slice(rst_seq_num); // seq num
     // pkt.extend_from_slice(&(ack_num + packet.len() as u32).to_be_bytes());
     pkt.extend_from_slice(&[0x00,0x00,0x00,0x00]); // ack 0
     // pkt.extend_from_slice(&[0x50, 0x00]); // data offset and reserved
