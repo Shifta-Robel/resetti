@@ -4,6 +4,7 @@ use packet_utils::{build_rst_packet_from, src_dst_details, tcp_details};
 use pcap::{Capture, Packet};
 
 mod packet_utils;
+mod pseudo_struct;
 
 fn main() {
     let cap = pcap::Device::lookup().unwrap().unwrap();
