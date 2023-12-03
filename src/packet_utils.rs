@@ -15,6 +15,12 @@ pub fn syn_ack_flags(packet: &Packet) -> (bool, bool) {
     (syn, ack)
 }
 
+pub fn is_dns(_packet: &Packet) -> bool {
+    // is udp
+    // port 53
+    unimplemented!()
+}
+
 // pub fn ack_enabled(packet: &Packet) -> bool {
 //     let tcp_header = &packet.data[34..54];
 //     let flags = tcp_header[13];

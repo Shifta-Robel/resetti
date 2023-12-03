@@ -1,24 +1,25 @@
 use regex::Regex;
-use std::{net::SocketAddrV4, collections::HashMap, hint::unreachable_unchecked};
+use std::{net::IpAddr, collections::HashMap};
 
-struct Filter {
+pub struct Filter {
     src: HostFilter,
     dst: HostFilter,
 }
 
 enum HostFilter {
     Regex(Regex),
-    List(Vec<SocketAddrV4>),
+    List(Vec<IpAddr>),
     WildCard
 }
 
-struct BlackList {
+pub struct BlackList {
     list: Vec<Filter>,
-    resolved_domains: HashMap<SocketAddrV4, String>,
+    resolved_domains: HashMap<IpAddr, String>,
 }
 
 impl BlackList {
-    fn should_block(&mut self, src: &SocketAddrV4, dst: &SocketAddrV4) -> bool {
+    pub fn init() -> Self{unimplemented!()}
+    pub fn should_block(&mut self, src: &IpAddr, dst: &IpAddr) -> bool {
         // filter by src
         //  
         let mut matched_srcs = self.list.iter().filter(|i| {
@@ -49,9 +50,12 @@ impl BlackList {
         );
         matched
     }
+    pub fn append_resolved_domain(&mut self,resolved: (IpAddr, String)) {
+        self.resolved_domains.insert(resolved.0, resolved.1);
+    }
 }
 
-fn find_domain(dst: &SocketAddrV4, rgx: &Regex, resolved: &mut HashMap<SocketAddrV4, String>) -> bool {
+fn find_domain(dst: &IpAddr, rgx: &Regex, resolved: &mut HashMap<IpAddr, String>) -> bool {
     let domain = resolved.get(dst).unwrap();
     // let rg = Regex::new(rgx).unwrap();
     rgx.is_match(domain)

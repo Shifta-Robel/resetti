@@ -1,10 +1,9 @@
-use std::{eprintln, println};
-
-use packet_utils::{build_rst_packet_from, src_dst_details, tcp_details};
+use packet_utils::{build_rst_packet_from, src_dst_details, tcp_details, is_dns};
 use pcap::{Capture, Packet};
 
 mod packet_utils;
 mod pseudo_struct;
+mod resolved_domain;
 
 fn main() {
     let cap = pcap::Device::lookup().unwrap().unwrap();
@@ -24,13 +23,14 @@ fn main() {
     let mut cap = cap.open().unwrap();
     let filter = "tcp";
     // additional filter logic from config
-    cap.filter(filter, true).unwrap();
+    let mut blacklist = pseudo_struct::BlackList::init();
+    cap.filter(&filter, true).unwrap();
 
     // start sniffing
     // let mut count = 0;
     while let Ok(packet) = cap.next_packet(){
         // if count == 1 {break;}
-        println!("packet: {:?}", packet.len());
+        // println!("packet: {:?}", packet.len());
         let (is_syn,is_ack) = packet_utils::syn_ack_flags(&packet);
 
         if packet_utils::is_ipv4(&packet) &&(is_syn || is_ack) {
@@ -48,12 +48,18 @@ fn main() {
                 if let Err(e) = cap.sendpacket(rst){
                     eprintln!("send-error: {:?}", e);
                 }
-            }else{
-                println!("packet discarded");
-                continue;
+        }
+        else if is_dns(&packet) {
+            let resolved = resolved_domain::get_resolved(packet.data);
+            for i in resolved.iter(){
+                blacklist.append_resolved_domain(i.clone());
             }
         }
+        else{
+            println!("packet discarded");
+            continue;
+        }
+    }
         // count += 1;
         // println!("recieved packets: {}", count);
-
 }
