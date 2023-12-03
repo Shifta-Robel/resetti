@@ -130,6 +130,7 @@ name = "tcp_resetter"
 version = "0.1.0"
 dependencies = [
  "pcap",
+ "regex",
 ]
 
 [[package]]
