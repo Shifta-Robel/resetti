@@ -21,7 +21,10 @@ fn main() {
 
     //open and filter
     let mut cap = cap.open().unwrap();
-    let filter = "tcp";
+    let filter_tcp_syn = "tcp[13] & 2!=0";
+    let filter_tcp_ack = "tcp[13] & 16 != 0";
+    let filter_dns_rsp = "udp src port 53 and udp[2] & 0x80 != 0";
+    let filter = format!("{} or {} or ({})",filter_tcp_syn, filter_tcp_ack, filter_dns_rsp);
     // additional filter logic from config
     let mut blacklist = pseudo_struct::BlackList::init();
     cap.filter(&filter, true).unwrap();
