@@ -1,5 +1,6 @@
 use regex::Regex;
-use std::{net::IpAddr, collections::HashMap};
+use std::{collections::HashMap, net::IpAddr};
+use rayon::prelude::*;
 
 pub struct Filter {
     src: HostFilter,
@@ -9,7 +10,7 @@ pub struct Filter {
 enum HostFilter {
     Regex(Regex),
     List(Vec<IpAddr>),
-    WildCard
+    WildCard,
 }
 
 pub struct BlackList {
@@ -18,40 +19,49 @@ pub struct BlackList {
 }
 
 impl BlackList {
-    pub fn init() -> Self{unimplemented!()}
-    pub fn should_block(&mut self, src: &IpAddr, dst: &IpAddr) -> bool {
-        // filter by src
-        //  
-        let mut matched_srcs = self.list.iter().filter(|i| {
-            return match &i.src {
-                HostFilter::WildCard => {true},
-                HostFilter::List(list) => {
-                    list.contains(src)
-                },
-                HostFilter::Regex(_rgx) => {
-                    unreachable!("Can't be a regex");
-                }
-            }
-        } );
-        // filter by dst
-        //
-        let matched = matched_srcs.any(|i| {
-            return match &i.dst {
-                HostFilter::WildCard => {true},
-                HostFilter::List(list) => {
-                    list.contains(dst)
-                },
-                HostFilter::Regex(rgx) => {
-                    find_domain(dst, rgx, &mut self.resolved_domains)
-                }
-            }
-
-        }
-        );
-        matched
+    pub fn init() -> Self {
+        unimplemented!()
     }
-    pub fn append_resolved_domain(&mut self,resolved: (IpAddr, String)) {
+    pub fn should_block_par(&mut self, src: &IpAddr, dst: &IpAddr) -> bool {
+        self.list.par_iter().any(|filter|{
+            self.in_filter(&filter.src,*src) && self.in_filter(&filter.dst, *dst)
+        })
+    }
+    pub fn should_block(&mut self, src: &IpAddr, dst: &IpAddr) -> bool {
+        self.list.iter().any(|filter| {
+            self.in_filter(&filter.src, *src) && self.in_filter(&filter.dst, *dst)
+        })
+    }
+    pub fn append_resolved_domain(&mut self, resolved: (IpAddr, String)) {
         self.resolved_domains.insert(resolved.0, resolved.1);
+    }
+    fn in_filter(&self, filter: &HostFilter, ip_addr: IpAddr) -> bool {
+        match filter {
+            HostFilter::WildCard => true,
+            HostFilter::List(l) => l.iter().any(|i| *i == ip_addr),
+            HostFilter::Regex(rgx) => {
+                let domain = self.resolved_domains.get(&ip_addr);
+                // todo!("if no domain found resolve it");
+                let domain = domain.unwrap();
+                // rgx.is_match(domain.unwrap()) || // check host name
+                let ip = match ip_addr {
+                    IpAddr::V4(adr) => {
+                        let segments: Vec<String> =
+                            adr.octets().iter().map(|oct| format!("{}", oct)).collect();
+                        segments.join(".")
+                    }
+                    IpAddr::V6(adr) => {
+                        let segments: Vec<String> = adr
+                            .octets()
+                            .iter()
+                            .map(|oct| format!("{:04X}", oct))
+                            .collect();
+                        segments.join(":")
+                    }
+                };
+                rgx.is_match(domain) || rgx.is_match(&ip)
+            }
+        }
     }
 }
 
