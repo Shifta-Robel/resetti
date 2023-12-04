@@ -47,14 +47,14 @@ impl BlackList {
                 let ip = match ip_addr {
                     IpAddr::V4(adr) => {
                         let segments: Vec<String> =
-                            adr.octets().iter().map(|oct| format!("{}", oct)).collect();
+                            adr.octets().iter().map(|oct| format!("{oct}")).collect();
                         segments.join(".")
                     }
                     IpAddr::V6(adr) => {
                         let segments: Vec<String> = adr
                             .octets()
                             .iter()
-                            .map(|oct| format!("{:04X}", oct))
+                            .map(|oct| format!("{oct:04X}"))
                             .collect();
                         segments.join(":")
                     }

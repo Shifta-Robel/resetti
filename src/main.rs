@@ -24,7 +24,7 @@ fn main() {
     let filter_tcp_syn = "tcp[13] & 2!=0";
     let filter_tcp_ack = "tcp[13] & 16 != 0";
     let filter_dns_rsp = "udp src port 53 and udp[2] & 0x80 != 0";
-    let filter = format!("{} or {} or ({})",filter_tcp_syn, filter_tcp_ack, filter_dns_rsp);
+    let filter = format!("{filter_tcp_syn} or {filter_tcp_ack} or ({filter_dns_rsp})");
     // additional filter logic from config
     let mut blacklist = pseudo_struct::BlackList::init();
     cap.filter(&filter, true).unwrap();
@@ -49,12 +49,12 @@ fn main() {
                 println!("===========");
 
                 if let Err(e) = cap.sendpacket(rst){
-                    eprintln!("send-error: {:?}", e);
+                    eprintln!("send-error: {e:?}");
                 }
         }
         else if is_dns(&packet) {
             let resolved = resolved_domain::get_resolved(packet.data);
-            for i in resolved.iter(){
+            for i in &resolved{
                 blacklist.append_resolved_domain(i.clone());
             }
         }

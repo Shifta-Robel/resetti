@@ -3,15 +3,15 @@ use pcap::Packet;
 
 pub fn is_ipv4(packet: &Packet) -> bool {
     let ip_header = &packet.data[14..34];
-    let ip_version = (ip_header[0] & 0b11110000) >> 4;
+    let ip_version = (ip_header[0] & 0b1111_0000) >> 4;
     ip_version == 4
 }
 
 pub fn syn_ack_flags(packet: &Packet) -> (bool, bool) {
     let tcp_header = &packet.data[34..54];
     let flags = tcp_header[13];
-    let ack = (flags & 0b00010000) == 16;
-    let syn = (flags & 0b00000010) == 2;
+    let ack = (flags & 0b0001_0000) == 16;
+    let syn = (flags & 0b0000_0010) == 2;
     (syn, ack)
 }
 
@@ -30,8 +30,8 @@ pub fn is_dns(_packet: &Packet) -> bool {
 // }
 
 pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
-    let (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac) = src_dst_details(&packet);
-    let (seq_num, ack_num, window_size, _) = tcp_details(&packet);
+    let (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac) = src_dst_details(packet);
+    let (seq_num, ack_num, window_size, _) = tcp_details(packet);
 
     let mut pkt = Vec::with_capacity(54);
     pkt.extend_from_slice(src_mac);
@@ -65,7 +65,7 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     // pkt.extend_from_slice(&[0x50, 0x00]); // data offset and reserved
     // pkt.extend_from_slice(&[0b00010100]); // data offset and reserved
     pkt.extend_from_slice(&[0x50]); // data offset and reserved
-    pkt.extend_from_slice(&[0b00000100]); // flag
+    pkt.extend_from_slice(&[0b0000_0100]); // flag
 
     pkt.extend_from_slice(&window_size.to_be_bytes());
     pkt.extend_from_slice(&[0x00, 0x00]); // initial tcp checksum
@@ -82,11 +82,11 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     pseudo_ip_header[29] = 0;
     println!("rst packet");
     for bytes in &pseudo_ip_header{
-        print!("{:02X} ", bytes);
+        print!("{bytes:02X} ");
     }
 
     let tcp_checksum = checksum(&pseudo_ip_header);
-    println!("calculated rst checksum: {:X?}", tcp_checksum);
+    println!("calculated rst checksum: {tcp_checksum:X?}");
     pkt[50..52].copy_from_slice(&tcp_checksum.to_be_bytes());
 
     pkt
@@ -124,10 +124,10 @@ pub fn checksum(bytes: &[u8]) -> u16 {
     let mut checksum: u32 = 0;
     for i in (0..bytes.len()-1).step_by(2) {
         let word = u16::from_be_bytes([bytes[i], bytes[i+1]]);
-        checksum = checksum.wrapping_add(word as u32);
+        checksum = checksum.wrapping_add(u32::from(word));
     }
     if bytes.len() % 2 == 1 {
-        checksum = checksum.wrapping_add(bytes[bytes.len() -1] as u32) << 8;
+        checksum = checksum.wrapping_add(u32::from(bytes[bytes.len() -1])) << 8;
     }
     while checksum >> 16 != 0 {
         checksum = (checksum & 0xffff) + (checksum >> 16);
