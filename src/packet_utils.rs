@@ -1,5 +1,10 @@
-use std::net::Ipv4Addr;
+#![allow(unused)]
 use pcap::Packet;
+use rayon::{prelude::ParallelIterator, slice::ParallelSlice};
+use std::{
+    net::Ipv4Addr,
+    sync::atomic::{AtomicU32, AtomicU64},
+};
 
 pub fn is_ipv4(packet: &Packet) -> bool {
     let ip_header = &packet.data[14..34];
@@ -40,13 +45,13 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
 
     // IP header
     pkt.extend_from_slice(&[
-                          0x45, // IP version & header length
-                          0x00, // DSCP and ECN
-                          0x00, 0x28, // Total lenght
-                          0x06, 0x50, // Identification - dontt forget to set this to a unique value later !!!
-                          0x40, 0x00, // Flags & fragment offset
-                          0x3c, 0x06, // TTL adn protocol(TCP)
-                          0x00, 0x00, // temporary Header checksum
+        0x45, // IP version & header length
+        0x00, // DSCP and ECN
+        0x00, 0x28, // Total lenght
+        0x06, 0x50, // Identification - dontt forget to set this to a unique value later !!!
+        0x40, 0x00, // Flags & fragment offset
+        0x3c, 0x06, // TTL adn protocol(TCP)
+        0x00, 0x00, // temporary Header checksum
     ]);
     pkt.extend_from_slice(&dst_ip.octets());
     pkt.extend_from_slice(&src_ip.octets());
@@ -58,12 +63,12 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     pkt.extend_from_slice(&dst_port.to_be_bytes());
     pkt.extend_from_slice(&src_port.to_be_bytes());
     // pkt.extend_from_slice(&(seq_num + payload_len as u32 + 1).to_be_bytes());
-    let rst_seq_num = &(if is_syn {seq_num + 1} else {ack_num}).to_be_bytes();
+    let rst_seq_num = &(if is_syn { seq_num + 1 } else { ack_num }).to_be_bytes();
     pkt.extend_from_slice(rst_seq_num); // seq num
-    // pkt.extend_from_slice(&(ack_num + packet.len() as u32).to_be_bytes());
-    pkt.extend_from_slice(&[0x00,0x00,0x00,0x00]); // ack 0
-    // pkt.extend_from_slice(&[0x50, 0x00]); // data offset and reserved
-    // pkt.extend_from_slice(&[0b00010100]); // data offset and reserved
+                                        // pkt.extend_from_slice(&(ack_num + packet.len() as u32).to_be_bytes());
+    pkt.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // ack 0
+                                                      // pkt.extend_from_slice(&[0x50, 0x00]); // data offset and reserved
+                                                      // pkt.extend_from_slice(&[0b00010100]); // data offset and reserved
     pkt.extend_from_slice(&[0x50]); // data offset and reserved
     pkt.extend_from_slice(&[0b0000_0100]); // flag
 
@@ -81,7 +86,7 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     pseudo_ip_header[28] = 0;
     pseudo_ip_header[29] = 0;
     println!("rst packet");
-    for bytes in &pseudo_ip_header{
+    for bytes in &pseudo_ip_header {
         print!("{bytes:02X} ");
     }
 
@@ -120,19 +125,89 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
 //     checksum(&pseudo_ip_header)
 // }
 //
-pub fn checksum(bytes: &[u8]) -> u16 {
-    let mut checksum: u32 = 0;
-    for i in (0..bytes.len()-1).step_by(2) {
-        let word = u16::from_be_bytes([bytes[i], bytes[i+1]]);
-        checksum = checksum.wrapping_add(u32::from(word));
-    }
-    if bytes.len() % 2 == 1 {
-        checksum = checksum.wrapping_add(u32::from(bytes[bytes.len() -1])) << 8;
+// #[cfg(target_pointer_width = "32")]
+pub fn checksum_by2(bytes: &[u8]) -> u16 {
+    let mut checksum : u32 = bytes
+        .chunks_exact(2)
+        .map(|c| u32::from_be_bytes([0, 0, c[0], c[1]]))
+        .reduce(|a, b| a + b)
+        .unwrap();
+    let len = bytes.len();
+    if len % 2 == 1 {
+        checksum += u32::from(bytes[len - 1]) << 8;
     }
     while checksum >> 16 != 0 {
         checksum = (checksum & 0xffff) + (checksum >> 16);
     }
-    println!("calculated checksum : {:X?}", !checksum as u16);
+    !checksum as u16
+}
+
+pub fn checksum_2_par(bytes: &[u8]) -> u16 {
+    let checksum = AtomicU32::new(0);
+
+    bytes.par_chunks_exact(2).for_each(|chunk| {
+        checksum.fetch_add(
+            u32::from(u16::from_be_bytes([chunk[0], chunk[1]])),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    });
+    let mut checksum: u32 = checksum.into_inner();
+
+    if bytes.len() % 2 == 1 {
+        checksum += u32::from(bytes[bytes.len() - 1]) << 8;
+    }
+    while checksum >> 16 != 0 {
+        checksum = (checksum & 0xffff) + (checksum >> 16);
+    }
+    !checksum as u16
+}
+
+#[cfg(target_pointer_width = "64")]
+pub fn checksum(bytes: &[u8]) -> u16 {
+    let mut checksum = bytes
+        .chunks_exact(4)
+        .map(|c| u64::from(u32::from_be_bytes([c[0],c[1],c[2],c[3]])))
+        .reduce(|a,b| a + b)
+        .unwrap();
+    let len = bytes.len();
+    if len % 4 != 0 {
+        let slice = &bytes[len-len%4..];
+        let mut acc: u32 = 0;
+        for i in 0..slice.len() { acc = acc | (slice[i] as u32) << (3-i)*8; };
+        checksum += u64::from(acc);
+    }
+    while checksum >> 32 != 0 {
+        checksum = (checksum & 0xffffffff) + (checksum >> 32)
+    }
+    let mut checksum = (checksum >> 16) as u32 + (checksum & 0x0000ffff) as u32;
+    if checksum > 0xffff { checksum = (checksum & 0xffff) + 1 }
+    !checksum as u16
+}
+
+pub fn checksum_par(bytes: &[u8]) -> u16 {
+    let mut checksum = AtomicU64::new(0);
+    let len = bytes.len();
+    bytes.par_chunks_exact(4).for_each(|chunk| {
+        checksum.fetch_add(
+            u64::from(u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    });
+    let mut checksum: u64 = checksum.into_inner();
+    if len % 4 != 0 {
+        let mut octs = [0u8; 4];
+        for i in 0..(len % 4) {
+            octs[i] = bytes[len - (len % 4) + i]
+        }
+        checksum += u64::from(u32::from_be_bytes(octs)) << 32;
+    };
+    while checksum >> 32 != 0 {
+        checksum = (checksum & 0xffffffff) + (checksum >> 32)
+    }
+    let mut checksum = (checksum >> 16) as u32 + (checksum & 0x0000ffff) as u32;
+    if checksum > 0xffff {
+        checksum = (checksum & 0xffff) + 1
+    }
     !checksum as u16
 }
 
@@ -172,7 +247,7 @@ pub fn src_dst_details<'a>(
 /// * payload len
 pub fn tcp_details(packet: &Packet) -> (u32, u32, u16, usize) {
     let tcp_header = &packet.data[34..]; //54
-    // println!("tcp_header size {:?}", tcp_header.len());
+                                         // println!("tcp_header size {:?}", tcp_header.len());
     let seq_num = u32::from_be_bytes([tcp_header[4], tcp_header[5], tcp_header[6], tcp_header[7]]);
     // let window_bytes = &tcp_header[12..16];
     let window_bytes = &tcp_header[14..16];
@@ -188,15 +263,69 @@ pub fn tcp_details(packet: &Packet) -> (u32, u32, u16, usize) {
     (seq_num, ack_num, window_size, payload_len)
 }
 
-// fn build_packet(
-//     src_ip: Ipv4Addr,
-//     src_port: u16,
-//     dst_ip: Ipv4Addr,
-//     dst_port: u16,
-//     seq_num: u32,
-//     ack_num: u32,
-//  ){
-//
-//
-// }
-//
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn checksum_calculation_valid_for_even_number_of_bytes() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c,
+        ];
+        assert_eq!(checksum(bytes), 0xB1E6);
+    }
+
+    #[test]
+    fn checksum_calculation_valid_for_even_number_of_bytes_2() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c,
+        ];
+        assert_eq!(checksum_by2(bytes), 0xB1E6);
+    }
+
+    #[test]
+    fn checksum_calculation_valid_for_even_number_of_bytes_par() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c,
+        ];
+        assert_eq!(checksum_par(bytes), 0xB1E6);
+    }
+
+    #[test]
+    fn checksum_calculation_valid_for_odd_number_of_bytes() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c, 0x34,
+        ];
+        assert_eq!(checksum(bytes), 0x7DE6);
+    }
+    #[test]
+    fn checksum_calculation_valid_for_odd_number_of_bytes_by_2() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c, 0x34,
+        ];
+        assert_eq!(checksum_by2(bytes), 0x7DE6);
+    }
+
+    #[test]
+    fn checksum_calculation_valid_for_odd_number_of_bytes_par() {
+        let bytes: &[u8] = &[
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xac, 0x10,
+            0x0a, 0x63, 0xac, 0x10, 0x0a, 0x0c, 0x34,
+        ];
+        assert_eq!(checksum_par(bytes), 0x7DE6);
+    }
+
+    #[test]
+    fn rfc_checksum_calculation_valid_for_even_number_of_bytes() {
+        let bytes: &[u8] = &[0x00, 0x01, 0xf2, 0x03, 0xf4, 0xf5, 0xf6, 0xf7];
+        assert_eq!(!checksum(bytes), 0xddf2);
+    }
+
+    // checksum for ip
+    // checksum for tcp
+    // checksum valid for a packet
+}
