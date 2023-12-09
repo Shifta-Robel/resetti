@@ -68,16 +68,16 @@ impl MidFilter {
         })
     }
 
-    fn get_filter(&self) -> Filter {
+    fn get_filter(&self) -> Result<Filter, ConfigError> {
         if self.src.is_some() && self.src_regex.is_some() ||
         self.src.is_some() && self.src_exclude.is_some() ||
         self.src_regex.is_some() && self.src_exclude.is_some() {
-            //error out
+            return Err(ConfigError::MultipleFiltersFound);
         }
         if self.dst.is_some() && self.dst_regex.is_some() ||
         self.dst.is_some() && self.dst_exclude.is_some() ||
         self.dst_regex.is_some() && self.dst_exclude.is_some() {
-            //error out
+            return Err(ConfigError::MultipleFiltersFound);
         }
         let mut fil = Filter{
             src: HostFilter::WildCard,
@@ -103,23 +103,23 @@ impl MidFilter {
             fil.dst = HostFilter::Exclude( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
         }
         if let Some(b) = self.kill { if !b {fil.kill = false} }
-        fil
+        Ok(fil)
     }
 
     fn string_vec_from_value(item: &Value) -> Result<Vec<String>, ConfigError> {
-        let v = item.as_array().ok_or(ConfigError::ConfigParseError("src should be a list".to_string()))?;
+        let v = item.as_array().ok_or(ConfigError::ExpectedAList)?;
         let mut vec: Vec<String> = vec![];
         for i in v {
-            let s = i.as_str().ok_or(ConfigError::ConfigParseError("Invalid element in src list".to_string()))?;
+            let s = i.as_str().ok_or(ConfigError::FailedToParseAsIpAddr)?;
             vec.push(s.to_string())
         }
         Ok(vec)
     }
     fn string_from_value(item: &Value) -> Result<String, ConfigError> {
-        Ok(item.as_str().ok_or(ConfigError::ConfigParseError("Invalid string for regex".to_string()))?.to_string())
+        Ok(item.as_str().ok_or(ConfigError::InvalidRegex)?.to_string())
     }
     fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {
-        Ok(item.as_bool().ok_or(ConfigError::ConfigParseError("Expected boolean for kill".to_string()))?)
+        Ok(item.as_bool().ok_or(ConfigError::InvalidValueForKill)?)
     }
 }
 
@@ -144,14 +144,19 @@ impl Config{
         let val = contents.parse::<Value>().unwrap();
         let vals = val.as_table().unwrap().get("filter").unwrap();
         // let mids: Vec<_> = vals.as_array().unwrap().iter().map(|item|  MidFilter::to_mid_filter(item).unwrap()).collect();
-        let vals = vals.as_array().ok_or(ConfigError::ConfigParseError("Invalid config".to_string()))?;
+        let vals = vals.as_array().ok_or(ConfigError::FailedToParseConfig)?;
         let mut vec: Vec<_> = vec![];
         for i in vals {
             vec.push(MidFilter::to_mid_filter(i)?);
         }
-        Ok( Self {
-            filter: vec.iter().map(|i| MidFilter::get_filter(i)).collect()
-        })
+        let mut filter: Vec<Filter> = vec![];
+        for i in vec {
+            filter.push(i.get_filter()?);
+        }
+        // Ok( Self {
+        //     filter: vec.iter().map(|i| MidFilter::get_filter(i)?).collect()
+        // })
+        Ok(Self {filter})
     }
 }
 
@@ -161,8 +166,5 @@ impl Config{
 //         .map_err(ConfigError::ConfigParseError(m))
 // }
 fn get_contents(path: &str) -> Result<String,ConfigError> {
-    let m = String::from("dfd");
-    let s = std::fs::read_to_string(path);
-    if let Err(e) = s {return Err(ConfigError::ConfigParseError(m))}
-    else {return Ok(s.unwrap())}
+    Ok(std::fs::read_to_string(path)?)
 }
