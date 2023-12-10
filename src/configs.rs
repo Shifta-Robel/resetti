@@ -2,6 +2,7 @@ use std::{net::IpAddr, str::FromStr};
 use regex::Regex;
 use serde::Deserialize;
 use toml::Value;
+use anyhow::Result;
 
 use crate::errors::ConfigError;
 
@@ -139,32 +140,17 @@ pub struct Config{
 impl Config{
     pub fn build() -> Result<Self, ConfigError> {
         let contents = get_contents(CONFIG_FILE)?;
-            // .map_err(|a| ConfigError::IOError(a.to_string()))?;
-        
         let val = contents.parse::<Value>().unwrap();
         let vals = val.as_table().unwrap().get("filter").unwrap();
-        // let mids: Vec<_> = vals.as_array().unwrap().iter().map(|item|  MidFilter::to_mid_filter(item).unwrap()).collect();
         let vals = vals.as_array().ok_or(ConfigError::FailedToParseConfig)?;
-        let mut vec: Vec<_> = vec![];
-        for i in vals {
-            vec.push(MidFilter::to_mid_filter(i)?);
-        }
-        let mut filter: Vec<Filter> = vec![];
-        for i in vec {
-            filter.push(i.get_filter()?);
-        }
-        // Ok( Self {
-        //     filter: vec.iter().map(|i| MidFilter::get_filter(i)?).collect()
-        // })
+        let mut vec: Vec<_> = Vec::with_capacity(vals.len());
+        for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
+        let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
+        for i in vec { filter.push(i.get_filter()?); }
         Ok(Self {filter})
     }
 }
 
-// fn get_contents(path: &str) -> Result<String,ConfigError> {
-//     let m = String::from("dfd");
-//     std::fs::read_to_string(path)
-//         .map_err(ConfigError::ConfigParseError(m))
-// }
-fn get_contents(path: &str) -> Result<String,ConfigError> {
+fn get_contents(path: &str) -> Result<String, std::io::Error> {
     Ok(std::fs::read_to_string(path)?)
 }
