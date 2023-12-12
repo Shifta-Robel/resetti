@@ -37,8 +37,8 @@ pub fn is_ipv4(packet: &Packet) -> bool {
     ip_version == 4
 }
 
-pub fn syn_ack_flags(packet: &Packet) -> (bool, bool) {
-    let tcp_header = &packet.data[34..54];
+pub fn syn_ack_flags(tcp_header: &[u8]) -> (bool, bool) {
+    // let tcp_header = &packet.data[34..54];
     let flags = tcp_header[13];
     let ack = (flags & 0b0001_0000) == 16;
     let syn = (flags & 0b0000_0010) == 2;
@@ -89,7 +89,7 @@ pub fn get_protocol(packet: &Packet) -> Protocol {
 
 pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
     let (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac) = src_dst_details(packet);
-    let (seq_num, ack_num, window_size, _) = tcp_details(packet);
+    let (seq_num, ack_num, window_size) = tcp_details(packet);
 
     let mut pkt = Vec::with_capacity(54);
     pkt.extend_from_slice(src_mac);
@@ -226,7 +226,7 @@ pub fn checksum(bytes: &[u8]) -> u16 {
     if len % 4 != 0 {
         let slice = &bytes[len-len%4..];
         let mut acc: u32 = 0;
-        for i in 0..slice.len() { acc = acc | (slice[i] as u32) << (3-i)*8; };
+        for i in 0..slice.len() { acc |= (slice[i] as u32) << ((3-i)*8); };
         checksum += u64::from(acc);
     }
     while checksum >> 32 != 0 {
@@ -277,7 +277,8 @@ pub fn src_dst_details<'a>(
     let dst_ip = Ipv4Addr::new(ip_header[16], ip_header[17], ip_header[18], ip_header[19]);
     // let src_ip = Ipv4Addr::from(ip_header[12..16]);
     // let dst_ip = Ipv4Addr::from(ip_header[16..20]);
-    let tcp_header = &packet.data[34..]; // 34..54
+    // let tcp_header = &packet.data[34..]; // 34..54
+    let tcp_header = &packet.data[tcp_header_idx(packet).into()..]; // 34..54
     let src_port_bytes = [tcp_header[0], tcp_header[1]];
     let src_port = u16::from_be_bytes(src_port_bytes);
 
@@ -298,8 +299,8 @@ pub fn src_dst_details<'a>(
 /// * ack number
 /// * window size
 /// * payload len
-pub fn tcp_details(packet: &Packet) -> (u32, u32, u16, usize) {
-    let tcp_header = &packet.data[34..]; //54
+pub fn tcp_details(tcp_header: &[u8]) -> (u32, u32, u16) {
+    // let tcp_header = &packet.data[34..]; //54
                                          // println!("tcp_header size {:?}", tcp_header.len());
     let seq_num = u32::from_be_bytes([tcp_header[4], tcp_header[5], tcp_header[6], tcp_header[7]]);
     // let window_bytes = &tcp_header[12..16];
@@ -311,9 +312,9 @@ pub fn tcp_details(packet: &Packet) -> (u32, u32, u16, usize) {
         "seq_num: {}, ack_num: {}, window_size: {}",
         seq_num, ack_num, window_size
     );
-    let tcp_data_offset = tcp_header[12] >> 4;
-    let payload_len = packet.len() - (34 + (tcp_data_offset * 4)) as usize;
-    (seq_num, ack_num, window_size, payload_len)
+    // let tcp_data_offset = tcp_header[12] >> 4;
+    // let payload_len = packet.len() - (34 + (tcp_data_offset * 4)) as usize;
+    (seq_num, ack_num, window_size )
 }
 
 #[cfg(test)]
