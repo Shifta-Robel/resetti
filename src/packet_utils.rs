@@ -6,6 +6,31 @@ use std::{
     sync::atomic::{AtomicU32, AtomicU64},
 };
 
+#[derive(Debug,Clone)]
+pub enum Protocol{
+    Ipv4(TransportProtocol),
+    Ipv6(TransportProtocol)
+}
+
+#[derive(Debug,Clone)]
+pub enum TransportProtocol{
+    TCP(TcpFlags),
+    UDP(UdpProtocol),
+    Other
+}
+
+#[derive(Debug,Clone)]
+pub enum TcpFlags {
+    SynAck(bool, bool),
+    Other
+}
+
+#[derive(Debug,Clone)]
+pub enum UdpProtocol {
+    DNS,
+    Other
+}
+
 pub fn is_ipv4(packet: &Packet) -> bool {
     let ip_header = &packet.data[14..34];
     let ip_version = (ip_header[0] & 0b1111_0000) >> 4;
@@ -20,10 +45,38 @@ pub fn syn_ack_flags(packet: &Packet) -> (bool, bool) {
     (syn, ack)
 }
 
-pub fn is_dns(_packet: &Packet) -> bool {
-    // is udp
-    // port 53
-    unimplemented!()
+fn tcp_header_idx(packet: &Packet) -> u8{
+    let ihl = &packet[14] & 0b0000_1111;
+    
+    14 + ihl * 4
+}
+
+pub fn get_protocol(packet: &Packet) -> Protocol {
+    let is_ipv4 = is_ipv4(packet);
+    if is_ipv4 {
+        let protocol = &packet.data[23];
+        match protocol {
+            6 => {
+                let ix = tcp_header_idx(packet);
+                let (syn,ack) = syn_ack_flags(&packet.data[ix.into()..]);
+                let transport = if syn || ack {
+                    TcpFlags::SynAck(syn, ack)
+                }else {
+                    TcpFlags::Other
+                };
+                Protocol::Ipv4(TransportProtocol::TCP(transport))
+            },
+            17 => {
+                Protocol::Ipv4(TransportProtocol::UDP(UdpProtocol::DNS))
+            },
+            _ => {
+                Protocol::Ipv4(TransportProtocol::Other)
+            }
+        }
+    }else {
+        // ipv6 logic
+        unimplemented!()
+    }
 }
 
 // pub fn ack_enabled(packet: &Packet) -> bool {

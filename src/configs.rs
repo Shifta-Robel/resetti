@@ -5,14 +5,26 @@ use toml::Value;
 use anyhow::Result;
 
 use crate::errors::ConfigError;
+use crate::filters::{Filter, HostFilter};
 
 const CONFIG_FILE : &str = "./test_config.toml";
 
-#[derive(Debug)]
-pub struct Filter {
-    src: HostFilter,
-    dst: HostFilter,
-    kill: bool,
+pub struct Config{
+    pub filter: Vec<Filter>,
+}
+
+impl Config{
+    pub fn build() -> Result<Self, ConfigError> {
+        let contents = get_contents(CONFIG_FILE)?;
+        let val = contents.parse::<Value>().unwrap();
+        let vals = val.as_table().unwrap().get("filter").unwrap();
+        let vals = vals.as_array().ok_or(ConfigError::FailedToParseConfig)?;
+        let mut vec: Vec<_> = Vec::with_capacity(vals.len());
+        for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
+        let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
+        for i in vec { filter.push(i.get_filter()?); }
+        Ok(Self {filter})
+    }
 }
 
 
@@ -89,7 +101,7 @@ impl MidFilter {
             fil.src = HostFilter::List( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
         }
         if let Some(l) = &self.src_regex { 
-            fil.src = HostFilter::Regex( Regex::new(&l).unwrap())
+            fil.src = HostFilter::Regex( Regex::new(l).unwrap())
         }
         if let Some(l) = &self.src_exclude {
             fil.src = HostFilter::Exclude( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
@@ -98,7 +110,7 @@ impl MidFilter {
             fil.dst = HostFilter::List( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
         }
         if let Some(l) = &self.dst_regex { 
-            fil.dst = HostFilter::Regex( Regex::new(&l).unwrap())
+            fil.dst = HostFilter::Regex( Regex::new(l).unwrap())
         }
         if let Some(l) = &self.dst_exclude {
             fil.dst = HostFilter::Exclude( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
@@ -120,37 +132,11 @@ impl MidFilter {
         Ok(item.as_str().ok_or(ConfigError::InvalidRegex)?.to_string())
     }
     fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {
-        Ok(item.as_bool().ok_or(ConfigError::InvalidValueForKill)?)
+        item.as_bool().ok_or(ConfigError::InvalidValueForKill)
     }
 }
 
-#[derive(Debug)]
-pub enum HostFilter {
-    Regex(Regex),
-    List(Vec<IpAddr>),
-    Exclude(Vec<IpAddr>),
-    WildCard,
-}
-
-
-pub struct Config{
-    pub filter: Vec<Filter>,
-}
-
-impl Config{
-    pub fn build() -> Result<Self, ConfigError> {
-        let contents = get_contents(CONFIG_FILE)?;
-        let val = contents.parse::<Value>().unwrap();
-        let vals = val.as_table().unwrap().get("filter").unwrap();
-        let vals = vals.as_array().ok_or(ConfigError::FailedToParseConfig)?;
-        let mut vec: Vec<_> = Vec::with_capacity(vals.len());
-        for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
-        let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
-        for i in vec { filter.push(i.get_filter()?); }
-        Ok(Self {filter})
-    }
-}
 
 fn get_contents(path: &str) -> Result<String, std::io::Error> {
-    Ok(std::fs::read_to_string(path)?)
+    std::fs::read_to_string(path)
 }
