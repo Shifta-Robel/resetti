@@ -23,6 +23,7 @@ impl Config{
         for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
         let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
         for i in vec { filter.push(i.get_filter()?); }
+        filter.sort();
         Ok(Self {filter})
     }
 }
