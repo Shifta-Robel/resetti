@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use simple_dns::rdata::RData;
+use dns_lookup::lookup_addr;
 
+use crate::errors::DomainError;
 
 pub struct Resolved{
     resolved: HashMap<IpAddr, String>
@@ -30,7 +32,8 @@ impl Resolved {
             dbg!(&self.resolved);
         }
     }
-    pub fn resolve(&mut self, _ip: IpAddr) -> Result<String> {
-        unimplemented!()
+    pub fn resolve(&self, ip: &IpAddr) -> Result<String> {
+        println!("resolving {ip:?} to {:?}",lookup_addr(ip));
+        lookup_addr(ip).map_err(|_| anyhow!(DomainError::FailedToResolve(*ip)))
     }
 }

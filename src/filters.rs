@@ -57,7 +57,7 @@ pub struct Blacklist {
 }
 
 impl Blacklist {
-    pub fn build(list: &Vec<Filter>) -> Self {
+    pub fn build(list: &[Filter]) -> Self {
         Self {list: list.to_vec()}
     }
     pub fn should_block(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> bool {
@@ -72,11 +72,7 @@ impl Blacklist {
             HostFilter::List(l) => l.iter().any(|i| *i == ip_addr),
             HostFilter::Exclude(l) => l.iter().any(|i| *i != ip_addr),
             HostFilter::Regex(rgx) => {
-                let domain = rd.get(&ip_addr);
-                // todo!("if no domain found resolve it");
-                // let domain = domain.unwrap();
-                let domain = domain.map_or("", |v| v);
-                // rgx.is_match(domain.unwrap()) || // check host name
+                let domain = rd.get(&ip_addr).map_or(rd.resolve(&ip_addr).unwrap(), |f| f.to_string());
                 let ip = match ip_addr {
                     IpAddr::V4(adr) => {
                         let segments: Vec<String> =
@@ -94,7 +90,7 @@ impl Blacklist {
                 };
                 // println!("\t check {domain} against {rgx}, eval {}",rgx.is_match(domain));
                 // println!("\t check {ip} against {rgx}, eval {}",rgx.is_match(&ip));
-                rgx.is_match(domain) || rgx.is_match(&ip)
+                rgx.is_match(&domain) || rgx.is_match(&ip)
             }
         }
     }
@@ -102,9 +98,10 @@ impl Blacklist {
 
 #[cfg(test)]
 mod tests {
+    #![allow(dead_code)]
     use regex::Regex;
 
-    use crate::configs::Config;
+    // use crate::configs::Config;
     use super::{Filter, HostFilter};
     use std::net::{IpAddr, Ipv4Addr};
     enum FilterType {

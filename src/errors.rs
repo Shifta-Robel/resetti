@@ -1,4 +1,5 @@
-use std::io;
+#![allow(dead_code)]
+use std::{io, net::IpAddr};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -19,4 +20,10 @@ pub enum ConfigError{
     InvalidValueForKill,
     #[error("Failed to parse value as an IP address")]
     FailedToParseAsIpAddr,
+}
+
+#[derive(Debug,Error)]
+pub enum DomainError{
+    #[error("Failed to resolve addr: {0}")]
+    FailedToResolve(IpAddr)
 }

@@ -226,7 +226,7 @@ pub fn checksum(bytes: &[u8]) -> u16 {
     if len % 4 != 0 {
         let slice = &bytes[len-len%4..];
         let mut acc: u32 = 0;
-        for i in 0..slice.len() { acc |= (slice[i] as u32) << ((3-i)*8); };
+        for (i,oct) in slice.iter().enumerate() { acc |= (slice[i] as u32) << ((3-i)*8); };
         checksum += u64::from(acc);
     }
     while checksum >> 32 != 0 {
