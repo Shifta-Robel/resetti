@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+use log::{info, error};
 use simple_dns::rdata::RData;
 use dns_lookup::lookup_addr;
 
@@ -14,26 +15,30 @@ impl Resolved {
     pub fn build() -> Self {
         Self{resolved: HashMap::new()}
     }
-    pub fn get(&self, ip: &IpAddr) -> Option<&String> {
-        self.resolved.get(ip)
+    pub fn get(&self, ip: &IpAddr) -> Option<String> {
+        self.resolved.get(ip).cloned()
     }
     pub fn update_from_dns(&mut self,packet: &[u8]) {
         let answer = simple_dns::Packet::parse(&packet[42..]);
-        if answer.is_err(){return}
-        let answer = answer.unwrap();
-        for i in &answer.answers{
-            let ip: Option<IpAddr> = match &i.rdata {
-                RData::A(a) => {Some(IpAddr::V4(Ipv4Addr::from(a.address)))},
-                RData::AAAA(aaaa) => {Some(IpAddr::V6(Ipv6Addr::from(aaaa.address)))},
-                _ => {None}
-            };
-            if ip.is_none() {continue}
-            self.resolved.insert(ip.unwrap(), i.name.to_string());
-            dbg!(&self.resolved);
+        if let Ok(answer) = answer {
+            for i in &answer.answers{
+                let ip: Option<IpAddr> = match &i.rdata {
+                    RData::A(a) => {Some(IpAddr::V4(Ipv4Addr::from(a.address)))},
+                    RData::AAAA(aaaa) => {Some(IpAddr::V6(Ipv6Addr::from(aaaa.address)))},
+                    _ => {None}
+                };
+                if ip.is_none() {continue}
+                let ip = ip.unwrap();
+                info!("Extracted from DNS packet IP:[{}] Domain:[{}]",ip,i.name);
+                self.resolved.insert(ip, i.name.to_string());
+                dbg!(&self.resolved);
+            }
+        }else{
+            error!("Failed to parse DNS packet");
         }
     }
-    pub fn resolve(&self, ip: &IpAddr) -> Result<String> {
+    pub fn resolve(&self, ip: &IpAddr) -> Result<String,DomainError> {
         println!("resolving {ip:?} to {:?}",lookup_addr(ip));
-        lookup_addr(ip).map_err(|_| anyhow!(DomainError::FailedToResolve(*ip)))
+        lookup_addr(ip).map_err(|_| DomainError::FailedToResolve(*ip))
     }
 }

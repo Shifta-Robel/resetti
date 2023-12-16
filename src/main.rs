@@ -7,7 +7,10 @@ use packet_utils::{build_rst_packet_from, src_dst_details, get_protocol, Protoco
 use pcap::{Capture, Packet};
 use anyhow::Result;
 
-use crate::packet_utils::UdpProtocol;
+use crate::{packet_utils::UdpProtocol, filters::PacketAction};
+
+use pretty_env_logger::env_logger::Env;
+use log::{info,trace};
 
 mod packet_utils;
 mod configs;
@@ -19,12 +22,23 @@ mod domains;
 // mod blacklist;
 
 fn main() -> Result<()> {
+    pretty_env_logger::env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    // pretty_env_logger::init();
+    info!("Starting application");
+    trace!("Some trace");
+    // error!("Failed to resolve DNS of [192.168.0.1]");
 
     let config = Config::build()?;
     let bl = Blacklist::build(&config.filter);
     let mut domains = Resolved::build();
 
+    let fils = &config.filter;
+    fils.iter().for_each(|f| {
+        println!("{f:?}");
+    });
+
     let cap = pcap::Device::lookup()?.unwrap();
+    info!("Device is {}", cap.name);
     let cap = Capture::from_device(cap).unwrap().immediate_mode(true).promisc(true);
 
     //open and filter
@@ -38,10 +52,15 @@ fn main() -> Result<()> {
     while let Ok(packet) = cap.next_packet(){
         let (src,_,_,dst,_,_) = src_dst_details(&packet);
         let (src, dst) = (IpAddr::V4(src),IpAddr::V4(dst));
-        if  !bl.should_block(&src, &dst, &domains) {continue};
-        // let should_block = bl.should_block(&src, &dst, &domains);
-        // println!("src: {src} dst: {dst} should block {should_block}");
-        // if !should_block {continue;}
+
+        match bl.get_packet_action(&src, &dst, &domains) {
+            PacketAction::Ignore => {continue;}
+            PacketAction::Monitor(fil) => {
+                info!("Detected connection src:[{}] -> dst:[{}] matched filter : [{:?}]",src,dst,fil);
+                continue;
+            }
+            PacketAction::Kill => {}
+        };
 
         let proto = get_protocol(&packet);
         dbg!(proto.clone());

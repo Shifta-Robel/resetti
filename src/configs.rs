@@ -16,9 +16,11 @@ pub struct Config{
 impl Config{
     pub fn build() -> Result<Self, ConfigError> {
         let contents = get_contents(CONFIG_FILE)?;
-        let val = contents.parse::<Value>().unwrap();
-        let vals = val.as_table().unwrap().get("filter").unwrap();
-        let vals = vals.as_array().ok_or(ConfigError::FailedToParseConfig)?;
+        let val = contents.parse::<Value>().map_err(|e| ConfigError::FailedToParseConfig(e.to_string()))?;
+        let table = val.as_table().ok_or_else(|| ConfigError::FailedToParseConfig("Failed to parse config as a table".to_string()))?;
+        let vals = table.get("filter").ok_or_else(|| ConfigError::FailedToParseConfig("No filters found".to_string()))?;
+        let vals = vals.as_array().ok_or_else(|| ConfigError::FailedToParseConfig("Failed to parse filters as an array".to_string()))?;
+
         let mut vec: Vec<_> = Vec::with_capacity(vals.len());
         for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
         let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
@@ -31,39 +33,39 @@ impl Config{
 
 #[derive(Deserialize, Debug)]
 struct MidFilter{
-    src: Option<Vec<String>>,
-    dst: Option<Vec<String>>,
+    src: Option<Vec<IpAddr>>,
+    dst: Option<Vec<IpAddr>>,
     src_regex: Option<String>,
     dst_regex: Option<String>,
-    src_exclude: Option<Vec<String>>,
-    dst_exclude: Option<Vec<String>>,
+    src_exclude: Option<Vec<IpAddr>>,
+    dst_exclude: Option<Vec<IpAddr>>,
     kill: Option<bool>,
 }
 
 impl MidFilter {
     fn to_mid_filter(item: &Value) -> Result<Self, ConfigError> {
         let src = match item.get("src") {
-            Some(v) => Some(Self::string_vec_from_value(v)?),
+            Some(v) => Some(Self::ip_vec_from_value(v)?),
             None => None
         };
         let dst = match item.get("dst") {
-            Some(v) => Some(Self::string_vec_from_value(v)?),
+            Some(v) => Some(Self::ip_vec_from_value(v)?),
             None => None
         };
         let src_exclude = match item.get("src_exclude") {
-            Some(v) => Some(Self::string_vec_from_value(v)?),
+            Some(v) => Some(Self::ip_vec_from_value(v)?),
             None => None
         };
         let dst_exclude = match item.get("dst_exclude") {
-            Some(v) => Some(Self::string_vec_from_value(v)?),
+            Some(v) => Some(Self::ip_vec_from_value(v)?),
             None => None
         };
         let src_regex = match item.get("src_regex") {
-           Some(v) => Some(Self::string_from_value(v)?),
+           Some(v) => Some(Self::string_from_value(v)?.to_string()),
            None => None
         };
         let dst_regex = match item.get("dst_regex") {
-           Some(v) => Some(Self::string_from_value(v)?),
+           Some(v) => Some(Self::string_from_value(v)?.to_string()),
            None => None
         };
         let kill = match item.get("kill"){
@@ -99,41 +101,44 @@ impl MidFilter {
             kill: true
         };
         if let Some(l) = &self.src {
-            fil.src = HostFilter::List( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
+            fil.src = HostFilter::List(l.to_vec())
         }
         if let Some(l) = &self.src_regex { 
-            fil.src = HostFilter::Regex( Regex::new(l).unwrap())
+            fil.src = HostFilter::Regex(Regex::new(l).map_err(|e| ConfigError::InvalidRegex(e))?)
         }
         if let Some(l) = &self.src_exclude {
-            fil.src = HostFilter::Exclude( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
+            fil.src = HostFilter::Exclude(l.to_vec())
         }
         if let Some(l) = &self.dst {
-            fil.dst = HostFilter::List( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
+            fil.dst = HostFilter::List(l.to_vec())
         }
         if let Some(l) = &self.dst_regex { 
-            fil.dst = HostFilter::Regex( Regex::new(l).unwrap())
+            fil.dst = HostFilter::Regex(Regex::new(l).map_err(|e| ConfigError::InvalidRegex(e))?)
         }
         if let Some(l) = &self.dst_exclude {
-            fil.dst = HostFilter::Exclude( l.iter().map(|ip| IpAddr::from_str(ip).unwrap()).collect::<Vec<IpAddr>>())
+            fil.dst = HostFilter::Exclude(l.to_vec())
         }
         if let Some(b) = self.kill { if !b {fil.kill = false} }
         Ok(fil)
     }
 
-    fn string_vec_from_value(item: &Value) -> Result<Vec<String>, ConfigError> {
-        let v = item.as_array().ok_or(ConfigError::ExpectedAList)?;
-        let mut vec: Vec<String> = vec![];
+    fn ip_vec_from_value(item: &Value) -> Result<Vec<IpAddr>, ConfigError> {
+        let v= item.as_array().ok_or(ConfigError::ExpectedAList)?;
+        let mut vec: Vec<IpAddr> = Vec::with_capacity(v.len());
         for i in v {
-            let s = i.as_str().ok_or(ConfigError::FailedToParseAsIpAddr)?;
-            vec.push(s.to_string())
+            let s = i.as_str().ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
+            let s = IpAddr::from_str(s).map_err(|e| ConfigError::FailedToParseAsIpAddr(format!("{} : {}",e,s.to_string())))?;
+            vec.push(s)
         }
         Ok(vec)
     }
-    fn string_from_value(item: &Value) -> Result<String, ConfigError> {
-        Ok(item.as_str().ok_or(ConfigError::InvalidRegex)?.to_string())
-    }
+
     fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {
         item.as_bool().ok_or(ConfigError::InvalidValueForKill)
+    }
+
+    fn string_from_value(item: &Value) -> Result<&str, ConfigError> {
+        item.as_str().ok_or(ConfigError::FailedToParseAsString(item.clone()))
     }
 }
 
