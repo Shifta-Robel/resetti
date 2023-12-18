@@ -7,6 +7,8 @@ use toml::Value;
 pub enum ConfigError{
     #[error("Failed to find config file")]
     NoConfigFound,
+    #[error("No filters found")]
+    NoFiltersFound,
     #[error("Failed to read config file")]
     FailedToReadConfig(#[from] io::Error),
     #[error("Failed to parse config: {}",.0)]

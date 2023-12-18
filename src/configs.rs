@@ -23,7 +23,7 @@ impl Config{
         let contents = get_contents(CONFIG_FILE)?;
         let val = contents.parse::<Value>().map_err(|e| ConfigError::FailedToParseConfig(e.to_string()))?;
         let table = val.as_table().ok_or_else(|| ConfigError::FailedToParseConfig("Failed to parse config as a table".to_string()))?;
-        let vals = table.get("filter").ok_or_else(|| ConfigError::FailedToParseConfig("No filters found".to_string()))?;
+        let vals = table.get("filter").ok_or_else(|| ConfigError::NoFiltersFound)?;
         let vals = vals.as_array().ok_or_else(|| ConfigError::FailedToParseConfig("Failed to parse filters as an array".to_string()))?;
 
         let interface = match table.get("device") {
