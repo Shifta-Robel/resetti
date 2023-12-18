@@ -41,6 +41,12 @@ pub enum HostFilter {
     Regex(Regex),
 }
 
+pub enum PacketAction {
+    Kill,
+    Monitor(Filter),
+    Ignore
+}
+
 impl HostFilter {
     pub fn get_sort_val(&self) -> u8 {
         match self {
@@ -60,11 +66,13 @@ impl Blacklist {
     pub fn build(list: &[Filter]) -> Self {
         Self {list: list.to_vec()}
     }
-    pub fn should_block(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> bool {
-        self.list.iter().any(|filter| {
-            // println!("checking {src} in {:?}, and {dst} in {:?} evaluated {b}",&filter.src,&filter.dst);
-            self.in_filter(&filter.src, rd, *src) && self.in_filter(&filter.dst, rd, *dst)
-        })
+    pub fn get_packet_action(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> PacketAction {
+        let matched = self.list.iter().find(|filter| self.in_filter(&filter.src, rd, *src) && self.in_filter(&filter.dst, rd, *dst));
+        if let Some(fil) = matched {
+            if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
+        }else {
+            PacketAction::Ignore
+        }
     }
     fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr) -> bool {
         match filter {
