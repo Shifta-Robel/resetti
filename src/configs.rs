@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::{net::IpAddr, str::FromStr};
 use regex::Regex;
 use serde::Deserialize;
@@ -8,9 +9,13 @@ use crate::errors::ConfigError;
 use crate::filters::{Filter, HostFilter};
 
 const CONFIG_FILE : &str = "./test_config.toml";
+const DEFAULT_LOG_LEVEL: &str = "info";
 
+#[derive(Debug)]
 pub struct Config{
     pub filter: Vec<Filter>,
+    pub interface: Interface,
+    pub log: LogConfig,
 }
 
 impl Config{
@@ -21,12 +26,78 @@ impl Config{
         let vals = table.get("filter").ok_or_else(|| ConfigError::FailedToParseConfig("No filters found".to_string()))?;
         let vals = vals.as_array().ok_or_else(|| ConfigError::FailedToParseConfig("Failed to parse filters as an array".to_string()))?;
 
+        let interface = match table.get("device") {
+            Some(value) => {
+                if let Some(v) = value.get("interface"){
+                    match v.as_str() {
+                        Some(s) => Interface::Custom(s.to_string()),
+                        None => Err(ConfigError::FailedToParseAsString(value.clone()))?,
+                    }
+                }else {
+                    Interface::Lookup
+                }
+            },
+            None => Interface::Lookup,
+        };
+
+        let log = match table.get("log") {
+            Some(value) => {
+                let filter_level = match value.get("log-level") {
+                    Some(v) => v.as_str().ok_or(ConfigError::FailedToParseAsString(v.clone()))?,
+                    None => DEFAULT_LOG_LEVEL
+                };
+                let log_level = match filter_level {
+                    "off" => Some(log::LevelFilter::Off),
+                    "error" => Some(log::LevelFilter::Error),
+                    "warn" => Some(log::LevelFilter::Warn),
+                    "info" => Some(log::LevelFilter::Info),
+                    "debug" => Some(log::LevelFilter::Debug),
+                    "trace" => Some(log::LevelFilter::Trace),
+                    _ => None
+                };
+                let log_level = log_level.ok_or(ConfigError::InvalidLogLevel(filter_level.to_string()))?;
+                let log_file = match value.get("log-file") {
+                    Some(v) => {
+                        let st = v.as_str().ok_or(ConfigError::FailedToParseAsString(v.clone()))?;
+                        Some(OsString::from(st))
+                    },
+                    None => None
+                };
+                LogConfig{
+                    log_level,
+                    log_file
+                }
+            },
+            None => LogConfig::default()
+        };
+        // let log = 
         let mut vec: Vec<_> = Vec::with_capacity(vals.len());
         for i in vals { vec.push(MidFilter::to_mid_filter(i)?); }
         let mut filter: Vec<Filter> = Vec::with_capacity(vec.len());
         for i in vec { filter.push(i.get_filter()?); }
         filter.sort();
-        Ok(Self {filter})
+        Ok(Self {filter, interface,log })
+    }
+}
+
+#[derive(Debug,Clone)]
+pub enum Interface {
+    Lookup,
+    Custom(String)
+}
+
+#[derive(Debug)]
+pub struct LogConfig {
+    pub log_level: log::LevelFilter,
+    pub log_file: Option<OsString>
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self{
+            log_level: log::LevelFilter::Info,
+            log_file: None
+        }
     }
 }
 

@@ -22,7 +22,9 @@ pub enum ConfigError{
     #[error("Failed to parse value as an IP address [{}]", .0)]
     FailedToParseAsIpAddr(String),
     #[error("Failed to parse value as String: {}",.0)]
-    FailedToParseAsString(Value)
+    FailedToParseAsString(Value),
+    #[error("Invalid log level provided : {}",.0)]
+    InvalidLogLevel(String)
 }
 
 

@@ -9,36 +9,54 @@ use anyhow::Result;
 
 use crate::{packet_utils::UdpProtocol, filters::PacketAction};
 
-use pretty_env_logger::env_logger::Env;
-use log::{info,trace};
+use pretty_env_logger::env_logger::Builder;
+use log::{info,trace, warn};
 
 mod packet_utils;
 mod configs;
 mod errors;
 mod filters;
 mod domains;
-// mod pseudo_struct;
-// mod resolved_domain;
-// mod blacklist;
 
 fn main() -> Result<()> {
-    pretty_env_logger::env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    // pretty_env_logger::init();
-    info!("Starting application");
-    trace!("Some trace");
-    // error!("Failed to resolve DNS of [192.168.0.1]");
-
     let config = Config::build()?;
     let bl = Blacklist::build(&config.filter);
     let mut domains = Resolved::build();
 
+    let log_level = config.log.log_level;
+    match config.log.log_file {
+           Some(path) => {
+               std::env::set_var("LOG_FILE", path);
+               Builder::new()
+                   .parse_env("LOG_FILE")
+                   .filter_level(log_level)
+                   .init();
+               pretty_env_logger::init();
+           }
+           None => {
+               pretty_env_logger::env_logger::Builder::new().filter_level(log_level).init();
+           }
+     }
+    info!("Starting application");
+    trace!("Some trace");
+    // error!("Failed to resolve DNS of [192.168.0.1]");
     let fils = &config.filter;
     fils.iter().for_each(|f| {
         println!("{f:?}");
     });
 
-    let cap = pcap::Device::lookup()?.unwrap();
-    info!("Device is {}", cap.name);
+    let cap = match config.interface{
+        configs::Interface::Lookup => {
+            pcap::Device::lookup().unwrap().unwrap()
+        },
+        configs::Interface::Custom(dev) => {
+            pcap::Device::from(dev.as_str())
+        }
+    };
+
+
+    // let cap = pcap::Device::lookup()?.unwrap();
+    info!("Sniffing on interface:  [{}]", cap.name);
     let cap = Capture::from_device(cap).unwrap().immediate_mode(true).promisc(true);
 
     //open and filter
@@ -56,7 +74,7 @@ fn main() -> Result<()> {
         match bl.get_packet_action(&src, &dst, &domains) {
             PacketAction::Ignore => {continue;}
             PacketAction::Monitor(fil) => {
-                info!("Detected connection src:[{}] -> dst:[{}] matched filter : [{:?}]",src,dst,fil);
+                warn!("connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);
                 continue;
             }
             PacketAction::Kill => {}

@@ -285,10 +285,6 @@ pub fn src_dst_details<'a>(
     let dst_port_bytes = [tcp_header[2], tcp_header[3]];
     let dst_port = u16::from_be_bytes(dst_port_bytes);
 
-    println!(
-        "src: {}:{}, src_mac: {:X?}, dst: {}:{}, dst_mac: {:X?}",
-        src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac
-    );
     (src_ip, src_port, src_mac, dst_ip, dst_port, dst_mac)
 }
 

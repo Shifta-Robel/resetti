@@ -27,7 +27,7 @@ impl Resolved {
                     RData::AAAA(aaaa) => {Some(IpAddr::V6(Ipv6Addr::from(aaaa.address)))},
                     _ => {None}
                 };
-                if ip.is_none() {continue}
+                if let None = ip {continue}
                 let ip = ip.unwrap();
                 info!("Extracted from DNS packet IP:[{}] Domain:[{}]",ip,i.name);
                 self.resolved.insert(ip, i.name.to_string());
@@ -38,7 +38,7 @@ impl Resolved {
         }
     }
     pub fn resolve(&self, ip: &IpAddr) -> Result<String,DomainError> {
-        println!("resolving {ip:?} to {:?}",lookup_addr(ip));
+        // println!("resolving {ip:?} to {:?}",lookup_addr(ip));
         lookup_addr(ip).map_err(|_| DomainError::FailedToResolve(*ip))
     }
 }
