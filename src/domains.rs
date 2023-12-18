@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use anyhow::Result;
-use log::{info, error};
+use slog::{info, error};
+use slog_scope::logger;
 use simple_dns::rdata::RData;
 use dns_lookup::lookup_addr;
 
@@ -27,14 +28,14 @@ impl Resolved {
                     RData::AAAA(aaaa) => {Some(IpAddr::V6(Ipv6Addr::from(aaaa.address)))},
                     _ => {None}
                 };
-                if let None = ip {continue}
+                if ip.is_none() {continue}
                 let ip = ip.unwrap();
-                info!("Extracted from DNS packet IP:[{}] Domain:[{}]",ip,i.name);
+                info!(logger(), "Extracted from DNS packet IP:[{}] Domain:[{}]",ip,i.name);
                 self.resolved.insert(ip, i.name.to_string());
                 dbg!(&self.resolved);
             }
         }else{
-            error!("Failed to parse DNS packet");
+            error!(logger(), "Failed to parse DNS packet");
         }
     }
     pub fn resolve(&self, ip: &IpAddr) -> Result<String,DomainError> {

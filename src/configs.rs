@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::fs::{OpenOptions, File};
 use std::{net::IpAddr, str::FromStr};
 use regex::Regex;
 use serde::Deserialize;
@@ -46,20 +46,25 @@ impl Config{
                     Some(v) => v.as_str().ok_or(ConfigError::FailedToParseAsString(v.clone()))?,
                     None => DEFAULT_LOG_LEVEL
                 };
-                let log_level = match filter_level {
-                    "off" => Some(log::LevelFilter::Off),
-                    "error" => Some(log::LevelFilter::Error),
-                    "warn" => Some(log::LevelFilter::Warn),
-                    "info" => Some(log::LevelFilter::Info),
-                    "debug" => Some(log::LevelFilter::Debug),
-                    "trace" => Some(log::LevelFilter::Trace),
-                    _ => None
-                };
-                let log_level = log_level.ok_or(ConfigError::InvalidLogLevel(filter_level.to_string()))?;
+                let log_level = slog::Level::from_str(filter_level);
+                let log_level = match log_level {
+                    Ok(s) => Ok(Some(s)),
+                    Err(_) => {
+                        if filter_level == "off" {
+                            Ok(None)
+                        }else{
+                            Err(ConfigError::InvalidLogLevel(filter_level.to_string()))
+                        }
+                    }
+                }?;
+                    // .map_err(|_| ConfigError::InvalidLogLevel(String::from(filter_level)));
                 let log_file = match value.get("log-file") {
                     Some(v) => {
                         let st = v.as_str().ok_or(ConfigError::FailedToParseAsString(v.clone()))?;
-                        Some(OsString::from(st))
+                        Some(
+                            OpenOptions::new().create(true).write(true).truncate(true).open(st).unwrap()
+                            )
+                        // Some(OsString::from(st))
                     },
                     None => None
                 };
@@ -88,14 +93,14 @@ pub enum Interface {
 
 #[derive(Debug)]
 pub struct LogConfig {
-    pub log_level: log::LevelFilter,
-    pub log_file: Option<OsString>
+    pub log_level: Option<slog::Level>,
+    pub log_file: Option<File>
 }
 
 impl Default for LogConfig {
     fn default() -> Self {
         Self{
-            log_level: log::LevelFilter::Info,
+            log_level: Some(slog::Level::Info),
             log_file: None
         }
     }
@@ -175,7 +180,7 @@ impl MidFilter {
             fil.src = HostFilter::List(l.to_vec())
         }
         if let Some(l) = &self.src_regex { 
-            fil.src = HostFilter::Regex(Regex::new(l).map_err(|e| ConfigError::InvalidRegex(e))?)
+            fil.src = HostFilter::Regex(Regex::new(l).map_err(ConfigError::InvalidRegex)?)
         }
         if let Some(l) = &self.src_exclude {
             fil.src = HostFilter::Exclude(l.to_vec())
@@ -184,7 +189,7 @@ impl MidFilter {
             fil.dst = HostFilter::List(l.to_vec())
         }
         if let Some(l) = &self.dst_regex { 
-            fil.dst = HostFilter::Regex(Regex::new(l).map_err(|e| ConfigError::InvalidRegex(e))?)
+            fil.dst = HostFilter::Regex(Regex::new(l).map_err(ConfigError::InvalidRegex)?)
         }
         if let Some(l) = &self.dst_exclude {
             fil.dst = HostFilter::Exclude(l.to_vec())
@@ -198,7 +203,7 @@ impl MidFilter {
         let mut vec: Vec<IpAddr> = Vec::with_capacity(v.len());
         for i in v {
             let s = i.as_str().ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
-            let s = IpAddr::from_str(s).map_err(|e| ConfigError::FailedToParseAsIpAddr(format!("{} : {}",e,s.to_string())))?;
+            let s = IpAddr::from_str(s).map_err(|e| ConfigError::FailedToParseAsIpAddr(format!("{} : {}",e ,s )))?;
             vec.push(s)
         }
         Ok(vec)

@@ -81,7 +81,7 @@ impl Blacklist {
             HostFilter::Exclude(l) => l.iter().any(|i| *i != ip_addr),
             HostFilter::Regex(rgx) => {
                 let mut domain: Option<String> = rd.get(&ip_addr);
-                if let None = domain {
+                if domain.is_none() {
                     domain = rd.resolve(&ip_addr).ok();
                 };
                 if let Some(d) = domain {

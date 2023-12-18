@@ -6,39 +6,31 @@ use filters::Blacklist;
 use packet_utils::{build_rst_packet_from, src_dst_details, get_protocol, Protocol, TransportProtocol, TcpFlags};
 use pcap::{Capture, Packet};
 use anyhow::Result;
+use slog::{info, warn, trace, debug};
+use slog_scope::logger;
 
-use crate::{packet_utils::UdpProtocol, filters::PacketAction};
+use crate::{packet_utils::UdpProtocol, filters::PacketAction, logging::init_logger};
 
-use pretty_env_logger::env_logger::Builder;
-use log::{info,trace, warn};
+// use pretty_env_logger::env_logger::Builder;
+// use log::{info,trace, warn};
 
 mod packet_utils;
 mod configs;
 mod errors;
 mod filters;
 mod domains;
+mod logging;
 
 fn main() -> Result<()> {
     let config = Config::build()?;
     let bl = Blacklist::build(&config.filter);
     let mut domains = Resolved::build();
 
-    let log_level = config.log.log_level;
-    match config.log.log_file {
-           Some(path) => {
-               std::env::set_var("LOG_FILE", path);
-               Builder::new()
-                   .parse_env("LOG_FILE")
-                   .filter_level(log_level)
-                   .init();
-               pretty_env_logger::init();
-           }
-           None => {
-               pretty_env_logger::env_logger::Builder::new().filter_level(log_level).init();
-           }
-     }
-    info!("Starting application");
-    trace!("Some trace");
+    let _guard = init_logger(config.log);
+
+    info!(logger(), "Starting application");
+    trace!(logger(), "Some trace");
+    debug!(logger(), "some debug");
     // error!("Failed to resolve DNS of [192.168.0.1]");
     let fils = &config.filter;
     fils.iter().for_each(|f| {
@@ -56,7 +48,7 @@ fn main() -> Result<()> {
 
 
     // let cap = pcap::Device::lookup()?.unwrap();
-    info!("Sniffing on interface:  [{}]", cap.name);
+    info!(logger(),"Sniffing on interface:  [{}]", cap.name);
     let cap = Capture::from_device(cap).unwrap().immediate_mode(true).promisc(true);
 
     //open and filter
@@ -74,7 +66,7 @@ fn main() -> Result<()> {
         match bl.get_packet_action(&src, &dst, &domains) {
             PacketAction::Ignore => {continue;}
             PacketAction::Monitor(fil) => {
-                warn!("connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);
+                warn!(logger(), "connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);
                 continue;
             }
             PacketAction::Kill => {}
