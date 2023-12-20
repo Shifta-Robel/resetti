@@ -26,7 +26,9 @@ pub enum ConfigError{
     #[error("Failed to parse value as String: {}",.0)]
     FailedToParseAsString(Value),
     #[error("Invalid log level provided : {}",.0)]
-    InvalidLogLevel(String)
+    InvalidLogLevel(String),
+    #[error("Invalid value for prob : {}", .0)]
+    InvalidProbValue(Value)
 }
 
 
