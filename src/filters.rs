@@ -36,9 +36,26 @@ impl Ord for Filter {
 #[derive(Debug,Clone)]
 pub enum HostFilter {
     WildCard,
-    List(Vec<IpAddr>),
-    Exclude(Vec<IpAddr>),
+    IncludeIPs(Vec<IpAddr>),
+    ExcludeIPs(Vec<IpAddr>),
+    IncludeMACs(Vec<MacAddr>),
+    ExcludeMACs(Vec<MacAddr>),
     Regex(Regex),
+}
+
+#[derive(Debug,Clone,Eq)]
+pub struct MacAddr([u8;6]);
+
+impl PartialEq for MacAddr{
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl From<&str> for MacAddr {
+    fn from(value: &str) -> Self {
+        unimplemented!()
+    }
 }
 
 pub enum PacketAction {
@@ -51,8 +68,10 @@ impl HostFilter {
     pub fn get_sort_val(&self) -> u8 {
         match self {
             Self::WildCard => 0,
-            Self::List(_) => 1,
-            Self::Exclude(_) => 2,
+            Self::IncludeIPs(_) => 1,
+            Self::ExcludeIPs(_) => 1,
+            Self::IncludeMACs(_) => 2,
+            Self::ExcludeMACs(_) => 2,
             Self::Regex(_) => 4
         }
     }
@@ -66,19 +85,37 @@ impl Blacklist {
     pub fn build(list: &[Filter]) -> Self {
         Self {list: list.to_vec()}
     }
-    pub fn get_packet_action(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> PacketAction {
-        let matched = self.list.iter().find(|filter| self.in_filter(&filter.src, rd, *src) && self.in_filter(&filter.dst, rd, *dst));
+    pub fn get_packet_action(
+        &self,
+        tcp_details: (&IpAddr,  u16, [u8;6], &IpAddr,u16, [u8;6]),
+        rd: &Resolved
+        ) -> PacketAction {
+        let (src, src_port, src_mac, dst, dst_port, dst_mac) = tcp_details;
+        let matched = self.list.iter().find( 
+            |filter|
+            self.in_filter(&filter.src, rd, *src, MacAddr(src_mac)) &&
+            self.in_filter(&filter.dst, rd, *dst, MacAddr(dst_mac)));
         if let Some(fil) = matched {
             if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
         }else {
             PacketAction::Ignore
         }
     }
-    fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr) -> bool {
+    // pub fn get_packet_action(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> PacketAction {
+    //     let matched = self.list.iter().find(|filter| self.in_filter(&filter.src, rd, *src) && self.in_filter(&filter.dst, rd, *dst));
+    //     if let Some(fil) = matched {
+    //         if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
+    //     }else {
+    //         PacketAction::Ignore
+    //     }
+    // }
+    fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr, mac_addr: MacAddr) -> bool {
         match filter {
             HostFilter::WildCard => true,
-            HostFilter::List(l) => l.iter().any(|i| *i == ip_addr),
-            HostFilter::Exclude(l) => l.iter().any(|i| *i != ip_addr),
+            HostFilter::IncludeIPs(l) => l.iter().any(|i| *i == ip_addr),
+            HostFilter::ExcludeIPs(l) => l.iter().any(|i| *i != ip_addr),
+            HostFilter::IncludeMACs(l) => l.iter().any(|i| *i == mac_addr),
+            HostFilter::ExcludeMACs(l) => l.iter().any(|i| *i == mac_addr),
             HostFilter::Regex(rgx) => {
                 let mut domain: Option<String> = rd.get(&ip_addr);
                 if domain.is_none() {
@@ -120,8 +157,8 @@ mod tests {
     enum FilterType {
         WildCard,
         Regex,
-        List,
-        Exclude
+        IncludeIPs,
+        ExcludeIPs
     }
     // static config :Config = Config::build().unwrap();
     fn create_filter(src:FilterType,dst:FilterType,kill:bool) -> Filter {
@@ -135,8 +172,8 @@ mod tests {
             match c {
                 FilterType::WildCard => HostFilter::WildCard,
                 FilterType::Regex => HostFilter::Regex(rgx),
-                FilterType::List => HostFilter::List(ip_vec),
-                FilterType::Exclude => HostFilter::Exclude(ip_vec),
+                FilterType::IncludeIPs => HostFilter::IncludeIPs(ip_vec),
+                FilterType::ExcludeIPs => HostFilter::ExcludeIPs(ip_vec),
             }
         };
 
@@ -157,7 +194,7 @@ mod tests {
     fn wildcard_beats_list() {
         use FilterType::*;
         let a = create_filter(WildCard, WildCard, true);
-        let b = create_filter(WildCard, List, true);
+        let b = create_filter(WildCard, IncludeIPs, true);
         assert!(a < b);
     }
 }

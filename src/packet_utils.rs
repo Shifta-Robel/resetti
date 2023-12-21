@@ -266,7 +266,7 @@ pub fn checksum_par(bytes: &[u8]) -> u16 {
 
 pub fn src_dst_details<'a>(
     packet: &'a Packet,
-) -> (Ipv4Addr, u16, &'a [u8], Ipv4Addr, u16, &'a [u8]) {
+) -> (Ipv4Addr, u16, &'a [u8;6], Ipv4Addr, u16, &'a [u8;6]) {
     let eth_header = &packet.data[0..14];
     // println!("ethernet_header size {:?}", eth_header.len());
     let src_mac = eth_header[0..6].try_into().unwrap();

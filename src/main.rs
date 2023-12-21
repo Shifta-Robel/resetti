@@ -60,10 +60,10 @@ fn main() -> Result<()> {
     cap.filter(&filter, true).unwrap();
 
     while let Ok(packet) = cap.next_packet(){
-        let (src,_,_,dst,_,_) = src_dst_details(&packet);
+        let (src,_,src_mac,dst,_,_) = src_dst_details(&packet);
         let (src, dst) = (IpAddr::V4(src),IpAddr::V4(dst));
 
-        match bl.get_packet_action(&src, &dst, &domains) {
+        match bl.get_packet_action(src_dst_details(&packet), &domains) {
             PacketAction::Ignore => {continue;}
             PacketAction::Monitor(fil) => {
                 warn!(logger(), "connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);

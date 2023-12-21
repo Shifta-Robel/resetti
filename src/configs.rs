@@ -6,7 +6,7 @@ use std::{net::IpAddr, str::FromStr};
 use toml::Value;
 
 use crate::errors::ConfigError;
-use crate::filters::{Filter, HostFilter};
+use crate::filters::{Filter, HostFilter, MacAddr};
 
 const CONFIG_FILE: &str = "./test_config.toml";
 const DEFAULT_LOG_LEVEL: &str = "info";
@@ -152,6 +152,10 @@ struct MidFilter {
     dst_regex: Option<String>,
     src_exclude: Option<Vec<IpAddr>>,
     dst_exclude: Option<Vec<IpAddr>>,
+    src_mac: Option<Vec<MacAddr>>,
+    dst_mac: Option<Vec<MacAddr>>,
+    src_mac_exclude: Option<Vec<MacAddr>>,
+    dst_mac_exclude: Option<Vec<MacAddr>>,
     kill: Option<bool>,
     // prob: Option<f64>
 }
@@ -169,6 +173,7 @@ impl TryFrom<&toml::Value> for MidFilter {
             .get("dst_exclude")
             .map(ip_vec_from_value)
             .transpose()?;
+        let src_mac = value.get("src_mac").map(ip_vec_from_value).transpose()?;
         let src_regex = value.get("src_regex").map(string_from_value).transpose()?;
         let dst_regex = value.get("dst_regex").map(string_from_value).transpose()?;
         let kill = value.get("kill").map(bool_from_value).transpose()?;
@@ -213,22 +218,22 @@ impl TryInto<Filter> for &MidFilter {
             kill: true,
         };
         if let Some(l) = &self.src {
-            fil.src = HostFilter::List(l.to_vec())
+            fil.src = HostFilter::IncludeIPs(l.to_vec())
         }
         if let Some(l) = &self.src_regex {
             fil.src = HostFilter::Regex(Regex::new(l).map_err(ConfigError::InvalidRegex)?)
         }
         if let Some(l) = &self.src_exclude {
-            fil.src = HostFilter::Exclude(l.to_vec())
+            fil.src = HostFilter::ExcludeIPs(l.to_vec())
         }
         if let Some(l) = &self.dst {
-            fil.dst = HostFilter::List(l.to_vec())
+            fil.dst = HostFilter::IncludeIPs(l.to_vec())
         }
         if let Some(l) = &self.dst_regex {
             fil.dst = HostFilter::Regex(Regex::new(l).map_err(ConfigError::InvalidRegex)?)
         }
         if let Some(l) = &self.dst_exclude {
-            fil.dst = HostFilter::Exclude(l.to_vec())
+            fil.dst = HostFilter::ExcludeIPs(l.to_vec())
         }
         if let Some(b) = self.kill {
             if !b {
@@ -251,6 +256,15 @@ fn ip_vec_from_value(item: &Value) -> Result<Vec<IpAddr>, ConfigError> {
         vec.push(s)
     }
     Ok(vec)
+}
+
+fn mac_vec_from_value(item: &Value) -> Result<Vec<MacAddr>, ConfigError> {
+    let v = item.as_array().ok_or(ConfigError::ExpectedAList)?;
+    let mut vec: Vec<MacAddr> = Vec::with_capacity(v.len());
+    for i in v {
+        let s = i.as_str().ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
+        let s = MacAddr::try_from(s)?;
+    }
 }
 
 fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {
