@@ -28,7 +28,9 @@ pub enum ConfigError{
     #[error("Invalid log level provided : {}",.0)]
     InvalidLogLevel(String),
     #[error("Invalid value for prob : {}", .0)]
-    InvalidProbValue(Value)
+    InvalidProbValue(Value),
+    #[error("Invalid MAC address")]
+    InvalidMacAddr(String),
 }
 
 

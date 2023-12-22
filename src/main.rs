@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-
 use configs::Config;
 use domains::Resolved;
 use filters::Blacklist;
@@ -60,10 +58,12 @@ fn main() -> Result<()> {
     cap.filter(&filter, true).unwrap();
 
     while let Ok(packet) = cap.next_packet(){
-        let (src,_,src_mac,dst,_,_) = src_dst_details(&packet);
-        let (src, dst) = (IpAddr::V4(src),IpAddr::V4(dst));
+        let (src,src_port,src_mac,dst,dst_port,dst_mac) = src_dst_details(&packet);
+        let src = std::net::IpAddr::V4(src);
+        let dst = std::net::IpAddr::V4(dst);
+        let arg = (src, src_port, src_mac, dst, dst_port, dst_mac);
 
-        match bl.get_packet_action(src_dst_details(&packet), &domains) {
+        match bl.get_packet_action(arg, &domains) {
             PacketAction::Ignore => {continue;}
             PacketAction::Monitor(fil) => {
                 warn!(logger(), "connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);

@@ -173,7 +173,10 @@ impl TryFrom<&toml::Value> for MidFilter {
             .get("dst_exclude")
             .map(ip_vec_from_value)
             .transpose()?;
-        let src_mac = value.get("src_mac").map(ip_vec_from_value).transpose()?;
+        let src_mac = value.get("src_mac").map(mac_vec_from_value).transpose()?;
+        let dst_mac = value.get("dst_mac").map(mac_vec_from_value).transpose()?;
+        let src_mac_exclude = value.get("src_mac_exclude").map(mac_vec_from_value).transpose()?;
+        let dst_mac_exclude = value.get("dst_mac_exclude").map(mac_vec_from_value).transpose()?;
         let src_regex = value.get("src_regex").map(string_from_value).transpose()?;
         let dst_regex = value.get("dst_regex").map(string_from_value).transpose()?;
         let kill = value.get("kill").map(bool_from_value).transpose()?;
@@ -191,6 +194,10 @@ impl TryFrom<&toml::Value> for MidFilter {
             dst_regex,
             src_exclude,
             dst_exclude,
+            src_mac,
+            dst_mac,
+            src_mac_exclude,
+            dst_mac_exclude,
             kill,
             // prob
         })
@@ -226,6 +233,12 @@ impl TryInto<Filter> for &MidFilter {
         if let Some(l) = &self.src_exclude {
             fil.src = HostFilter::ExcludeIPs(l.to_vec())
         }
+        if let Some(l) = &self.src_mac {
+            fil.src = HostFilter::IncludeMACs(l.to_vec())
+        }
+        if let Some(l) = &self.src_mac_exclude {
+            fil.src = HostFilter::ExcludeMACs(l.to_vec())
+        }
         if let Some(l) = &self.dst {
             fil.dst = HostFilter::IncludeIPs(l.to_vec())
         }
@@ -234,6 +247,12 @@ impl TryInto<Filter> for &MidFilter {
         }
         if let Some(l) = &self.dst_exclude {
             fil.dst = HostFilter::ExcludeIPs(l.to_vec())
+        }
+        if let Some(l) = &self.dst_mac {
+            fil.dst = HostFilter::IncludeMACs(l.to_vec())
+        }
+        if let Some(l) = &self.dst_mac_exclude {
+            fil.dst = HostFilter::ExcludeMACs(l.to_vec())
         }
         if let Some(b) = self.kill {
             if !b {
@@ -264,7 +283,9 @@ fn mac_vec_from_value(item: &Value) -> Result<Vec<MacAddr>, ConfigError> {
     for i in v {
         let s = i.as_str().ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
         let s = MacAddr::try_from(s)?;
+        vec.push(s)
     }
+    Ok(vec)
 }
 
 fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {

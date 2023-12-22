@@ -1,6 +1,7 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, fmt::Debug};
 use regex::Regex;
-use crate::domains::Resolved;
+use serde::Deserialize;
+use crate::{domains::Resolved, errors::ConfigError};
 
 #[derive(Debug,Clone)]
 pub struct Filter {
@@ -43,8 +44,25 @@ pub enum HostFilter {
     Regex(Regex),
 }
 
-#[derive(Debug,Clone,Eq)]
+#[derive(Deserialize,Clone,Eq)]
 pub struct MacAddr([u8;6]);
+
+impl TryFrom<&str> for MacAddr {
+    type Error = ConfigError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let bytes: Result<Vec<u8>, _> = value.split(':')
+            .map(|part| u8::from_str_radix(part, 16))
+            .collect();
+        let bytes = bytes.map_err(|_| ConfigError::InvalidMacAddr(value.to_string()))?;
+        if bytes.len() == 6 {
+            let mut arr = [0u8; 6];
+            arr.copy_from_slice(&bytes);
+            Ok(MacAddr(arr))
+        }else{
+            Err(ConfigError::InvalidMacAddr(value.to_string()))?
+        }
+    }
+}
 
 impl PartialEq for MacAddr{
     fn eq(&self, other: &Self) -> bool {
@@ -52,12 +70,19 @@ impl PartialEq for MacAddr{
     }
 }
 
-impl From<&str> for MacAddr {
-    fn from(value: &str) -> Self {
-        unimplemented!()
+impl Debug for MacAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.0.map(|i| format!("{i:0X}"))).finish()
     }
 }
 
+impl MacAddr {
+    pub fn build(list: &[u8;6]) -> Self {
+        Self(*list)
+    }
+}
+
+#[derive(Debug)]
 pub enum PacketAction {
     Kill,
     Monitor(Filter),
@@ -87,28 +112,21 @@ impl Blacklist {
     }
     pub fn get_packet_action(
         &self,
-        tcp_details: (&IpAddr,  u16, [u8;6], &IpAddr,u16, [u8;6]),
+        tcp_details: (IpAddr,  u16, &[u8;6], IpAddr,u16, &[u8;6]),
         rd: &Resolved
         ) -> PacketAction {
-        let (src, src_port, src_mac, dst, dst_port, dst_mac) = tcp_details;
+        let (src, _src_port, src_mac, dst, _dst_port, dst_mac) = tcp_details;
         let matched = self.list.iter().find( 
             |filter|
-            self.in_filter(&filter.src, rd, *src, MacAddr(src_mac)) &&
-            self.in_filter(&filter.dst, rd, *dst, MacAddr(dst_mac)));
+            self.in_filter(&filter.src, rd, src, MacAddr(*src_mac)) &&
+            self.in_filter(&filter.dst, rd, dst, MacAddr(*dst_mac)));
         if let Some(fil) = matched {
             if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
         }else {
             PacketAction::Ignore
         }
     }
-    // pub fn get_packet_action(&self, src: &IpAddr, dst: &IpAddr, rd: &Resolved) -> PacketAction {
-    //     let matched = self.list.iter().find(|filter| self.in_filter(&filter.src, rd, *src) && self.in_filter(&filter.dst, rd, *dst));
-    //     if let Some(fil) = matched {
-    //         if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
-    //     }else {
-    //         PacketAction::Ignore
-    //     }
-    // }
+
     fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr, mac_addr: MacAddr) -> bool {
         match filter {
             HostFilter::WildCard => true,
@@ -152,8 +170,8 @@ mod tests {
     use regex::Regex;
 
     // use crate::configs::Config;
-    use super::{Filter, HostFilter};
-    use std::net::{IpAddr, Ipv4Addr};
+    use super::{Filter, HostFilter, MacAddr};
+    use std::{net::{IpAddr, Ipv4Addr}, assert_ne};
     enum FilterType {
         WildCard,
         Regex,
@@ -196,5 +214,25 @@ mod tests {
         let a = create_filter(WildCard, WildCard, true);
         let b = create_filter(WildCard, IncludeIPs, true);
         assert!(a < b);
+    }
+    #[test]
+    fn similar_macs_are_equal() {
+        let mac = "84:c5:a6:15:29:d0";
+        let a = MacAddr::try_from(mac).unwrap();
+        let b = MacAddr::build(&[0x84, 0xc5, 0xa6, 0x15, 0x29, 0xd0 ]);
+        assert_eq!(a, b);
+    }
+    #[test]
+    fn different_macs_are_not_equal() {
+        let mac = "84:c5:a6:15:29:d0";
+        let a = MacAddr::try_from(mac).unwrap();
+        let b = MacAddr::build(&[0x54, 0xc5, 0xa6, 0x15, 0x29, 0xd0 ]);
+        assert_ne!(a, b);
+    }
+    #[test]
+    #[should_panic(expected="InvalidMacAddr")]
+    fn panics_on_invalid_str_to_mac() {
+        let mac = "84:c5:a6:15:2z:d0";
+        let _val = MacAddr::try_from(mac).unwrap();
     }
 }
