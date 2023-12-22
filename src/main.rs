@@ -65,11 +65,12 @@ fn main() -> Result<()> {
 
         match bl.get_packet_action(arg, &domains) {
             PacketAction::Ignore => {continue;}
-            PacketAction::Monitor(fil) => {
-                warn!(logger(), "connection src:[{}] -> dst:[{}] matched filter: \n\t{:?}", src, dst,fil);
+            PacketAction::Monitor => {
+                warn!(logger(), "detected connection src:[{}] -> dst:[{}]", src, dst);
                 continue;
             }
-            PacketAction::Kill => {}
+            PacketAction::Reset => {},
+            PacketAction::SynReset => {unimplemented!()}
         };
 
         let proto = get_protocol(&packet);

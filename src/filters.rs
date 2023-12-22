@@ -7,7 +7,7 @@ use crate::{domains::Resolved, errors::ConfigError};
 pub struct Filter {
     pub src: HostFilter,
     pub dst: HostFilter,
-    pub kill: bool,
+    pub mode: PacketAction,
 }
 
 impl PartialEq for Filter {
@@ -82,11 +82,25 @@ impl MacAddr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Deserialize,Clone,Copy)]
 pub enum PacketAction {
-    Kill,
-    Monitor(Filter),
+    Reset,
+    SynReset,
+    Monitor,
     Ignore
+}
+
+impl TryFrom<&str> for PacketAction {
+    type Error = ConfigError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "reset" => Ok(Self::Reset),
+            "syn_reset" => Ok(Self::SynReset),
+            "monitor" => Ok(Self::Monitor),
+            "ignore" => Ok(Self::Ignore),
+            _ => Err(ConfigError::UnknownMode(value.to_string()))
+        }
+    }
 }
 
 impl HostFilter {
@@ -120,11 +134,7 @@ impl Blacklist {
             |filter|
             self.in_filter(&filter.src, rd, src, MacAddr(*src_mac)) &&
             self.in_filter(&filter.dst, rd, dst, MacAddr(*dst_mac)));
-        if let Some(fil) = matched {
-            if fil.kill {PacketAction::Kill} else {PacketAction::Monitor(fil.clone())}
-        }else {
-            PacketAction::Ignore
-        }
+        matched.map_or(PacketAction::Ignore, |f| f.mode)
     }
 
     fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr, mac_addr: MacAddr) -> bool {
@@ -170,7 +180,7 @@ mod tests {
     use regex::Regex;
 
     // use crate::configs::Config;
-    use super::{Filter, HostFilter, MacAddr};
+    use super::{Filter, HostFilter, MacAddr, PacketAction};
     use std::{net::{IpAddr, Ipv4Addr}, assert_ne};
     enum FilterType {
         WildCard,
@@ -179,7 +189,7 @@ mod tests {
         ExcludeIPs
     }
     // static config :Config = Config::build().unwrap();
-    fn create_filter(src:FilterType,dst:FilterType,kill:bool) -> Filter {
+    fn create_filter(src:FilterType,dst:FilterType,mode:PacketAction) -> Filter {
         let default = |c| {
             let ip_vec =  vec![
                 IpAddr::V4("192.235.32.2".parse::<Ipv4Addr>().unwrap()),
@@ -198,21 +208,21 @@ mod tests {
         Filter { 
             src: default(src),
             dst: default(dst),
-            kill
+            mode
         }
     }
     #[test]
     fn similar_filters_are_equal() {
         use FilterType::*;
-        let a = create_filter(WildCard, Regex, true);
-        let b = create_filter(Regex, WildCard, true);
+        let a = create_filter(WildCard, Regex, PacketAction::Reset);
+        let b = create_filter(Regex, WildCard, PacketAction::Ignore);
         assert!(a == b);
     }
     #[test]
     fn wildcard_beats_list() {
         use FilterType::*;
-        let a = create_filter(WildCard, WildCard, true);
-        let b = create_filter(WildCard, IncludeIPs, true);
+        let a = create_filter(WildCard, WildCard, PacketAction::Ignore);
+        let b = create_filter(WildCard, IncludeIPs, PacketAction::Reset);
         assert!(a < b);
     }
     #[test]

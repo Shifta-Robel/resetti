@@ -19,8 +19,8 @@ pub enum ConfigError{
     ExpectedAList,
     #[error("Invalid Regex value found")]
     InvalidRegex(#[from] regex::Error),
-    #[error("Kill can only be 'true' or 'false'")]
-    InvalidValueForKill,
+    #[error("Invalid mode {}, valid modes are reset|syn_reset|monitor|ignore", .0)]
+    UnknownMode(String),
     #[error("Failed to parse value as an IP address [{}]", .0)]
     FailedToParseAsIpAddr(String),
     #[error("Failed to parse value as String: {}",.0)]

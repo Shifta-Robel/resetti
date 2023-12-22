@@ -6,7 +6,7 @@ use std::{net::IpAddr, str::FromStr};
 use toml::Value;
 
 use crate::errors::ConfigError;
-use crate::filters::{Filter, HostFilter, MacAddr};
+use crate::filters::{Filter, HostFilter, MacAddr, PacketAction};
 
 const CONFIG_FILE: &str = "./test_config.toml";
 const DEFAULT_LOG_LEVEL: &str = "info";
@@ -156,7 +156,7 @@ struct MidFilter {
     dst_mac: Option<Vec<MacAddr>>,
     src_mac_exclude: Option<Vec<MacAddr>>,
     dst_mac_exclude: Option<Vec<MacAddr>>,
-    kill: Option<bool>,
+    mode: Option<PacketAction>,
     // prob: Option<f64>
 }
 
@@ -179,7 +179,8 @@ impl TryFrom<&toml::Value> for MidFilter {
         let dst_mac_exclude = value.get("dst_mac_exclude").map(mac_vec_from_value).transpose()?;
         let src_regex = value.get("src_regex").map(string_from_value).transpose()?;
         let dst_regex = value.get("dst_regex").map(string_from_value).transpose()?;
-        let kill = value.get("kill").map(bool_from_value).transpose()?;
+        let mode = value.get("mode").map(string_from_value).transpose()?
+            .map(|s| PacketAction::try_from(s.as_str())).transpose()?;
         // let prob = match value.get("prob"){
         //     Some(v) => Some(prob_from_value(v).and_then(op)?),
         //     None => None
@@ -198,7 +199,7 @@ impl TryFrom<&toml::Value> for MidFilter {
             dst_mac,
             src_mac_exclude,
             dst_mac_exclude,
-            kill,
+            mode,
             // prob
         })
     }
@@ -222,7 +223,7 @@ impl TryInto<Filter> for &MidFilter {
         let mut fil = Filter {
             src: HostFilter::WildCard,
             dst: HostFilter::WildCard,
-            kill: true,
+            mode: PacketAction::Reset,
         };
         if let Some(l) = &self.src {
             fil.src = HostFilter::IncludeIPs(l.to_vec())
@@ -254,10 +255,8 @@ impl TryInto<Filter> for &MidFilter {
         if let Some(l) = &self.dst_mac_exclude {
             fil.dst = HostFilter::ExcludeMACs(l.to_vec())
         }
-        if let Some(b) = self.kill {
-            if !b {
-                fil.kill = false
-            }
+        if let Some(m) = &self.mode {
+            fil.mode = m.clone()
         }
         Ok(fil)
     }
@@ -286,10 +285,6 @@ fn mac_vec_from_value(item: &Value) -> Result<Vec<MacAddr>, ConfigError> {
         vec.push(s)
     }
     Ok(vec)
-}
-
-fn bool_from_value(item: &Value) -> Result<bool, ConfigError> {
-    item.as_bool().ok_or(ConfigError::InvalidValueForKill)
 }
 
 fn string_from_value(item: &Value) -> Result<String, ConfigError> {
