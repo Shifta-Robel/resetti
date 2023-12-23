@@ -1,4 +1,5 @@
 use std::{net::IpAddr, fmt::Debug};
+use rand::Rng;
 use regex::Regex;
 use serde::Deserialize;
 use crate::{domains::Resolved, errors::ConfigError};
@@ -8,6 +9,7 @@ pub struct Filter {
     pub src: HostFilter,
     pub dst: HostFilter,
     pub mode: PacketAction,
+    pub prob: f64
 }
 
 impl PartialEq for Filter {
@@ -134,6 +136,13 @@ impl Blacklist {
             |filter|
             self.in_filter(&filter.src, rd, src, MacAddr(*src_mac)) &&
             self.in_filter(&filter.dst, rd, dst, MacAddr(*dst_mac)));
+        if let Some(f) = matched {
+           if let PacketAction::Reset = f.mode {
+               if f.prob < rand::thread_rng().gen_range(0. ..1.) {
+                   return PacketAction::Ignore;
+               }
+           }
+        }
         matched.map_or(PacketAction::Ignore, |f| f.mode)
     }
 
@@ -189,7 +198,7 @@ mod tests {
         ExcludeIPs
     }
     // static config :Config = Config::build().unwrap();
-    fn create_filter(src:FilterType,dst:FilterType,mode:PacketAction) -> Filter {
+    fn create_filter(src:FilterType,dst:FilterType,mode:PacketAction,prob:f64) -> Filter {
         let default = |c| {
             let ip_vec =  vec![
                 IpAddr::V4("192.235.32.2".parse::<Ipv4Addr>().unwrap()),
@@ -208,21 +217,22 @@ mod tests {
         Filter { 
             src: default(src),
             dst: default(dst),
-            mode
+            mode,
+            prob
         }
     }
     #[test]
     fn similar_filters_are_equal() {
         use FilterType::*;
-        let a = create_filter(WildCard, Regex, PacketAction::Reset);
-        let b = create_filter(Regex, WildCard, PacketAction::Ignore);
+        let a = create_filter(WildCard, Regex, PacketAction::Reset, 0.1);
+        let b = create_filter(Regex, WildCard, PacketAction::Ignore, 1.);
         assert!(a == b);
     }
     #[test]
     fn wildcard_beats_list() {
         use FilterType::*;
-        let a = create_filter(WildCard, WildCard, PacketAction::Ignore);
-        let b = create_filter(WildCard, IncludeIPs, PacketAction::Reset);
+        let a = create_filter(WildCard, WildCard, PacketAction::Ignore, 0.3);
+        let b = create_filter(WildCard, IncludeIPs, PacketAction::Reset, 0.4);
         assert!(a < b);
     }
     #[test]

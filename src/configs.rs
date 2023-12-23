@@ -157,7 +157,7 @@ struct MidFilter {
     src_mac_exclude: Option<Vec<MacAddr>>,
     dst_mac_exclude: Option<Vec<MacAddr>>,
     mode: Option<PacketAction>,
-    // prob: Option<f64>
+    prob: Option<f64>
 }
 
 impl TryFrom<&toml::Value> for MidFilter {
@@ -186,7 +186,7 @@ impl TryFrom<&toml::Value> for MidFilter {
         //     None => None
         // };
         // option<Result<f32, ConfigError>>
-        let _prob = value.get("prob").map(prob_from_value).transpose()?;
+        let prob = value.get("prob").map(prob_from_value).transpose()?;
 
         Ok(Self {
             src,
@@ -200,7 +200,7 @@ impl TryFrom<&toml::Value> for MidFilter {
             src_mac_exclude,
             dst_mac_exclude,
             mode,
-            // prob
+            prob
         })
     }
 }
@@ -224,6 +224,7 @@ impl TryInto<Filter> for &MidFilter {
             src: HostFilter::WildCard,
             dst: HostFilter::WildCard,
             mode: PacketAction::Reset,
+            prob: 1.,
         };
         if let Some(l) = &self.src {
             fil.src = HostFilter::IncludeIPs(l.to_vec())
@@ -256,7 +257,10 @@ impl TryInto<Filter> for &MidFilter {
             fil.dst = HostFilter::ExcludeMACs(l.to_vec())
         }
         if let Some(m) = &self.mode {
-            fil.mode = m.clone()
+            fil.mode = *m
+        }
+        if let Some(p) = &self.prob {
+            fil.prob = *p;
         }
         Ok(fil)
     }
