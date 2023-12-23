@@ -1,23 +1,23 @@
-use std::{net::IpAddr, fmt::Debug};
+use crate::{domains::Resolved, errors::ConfigError};
 use rand::Rng;
 use regex::Regex;
 use serde::Deserialize;
-use crate::{domains::Resolved, errors::ConfigError};
+use std::{fmt::Debug, net::IpAddr};
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Filter {
     pub src: HostFilter,
     pub dst: HostFilter,
     pub mode: PacketAction,
-    pub prob: f64
+    pub prob: f64,
 }
 
 impl PartialEq for Filter {
     fn eq(&self, other: &Self) -> bool {
         // discriminant(&self.src) == discriminant(&other.src) &&
         // discriminant(&self.dst) == discriminant(&other.dst)
-        self.src.get_sort_val() + self.dst.get_sort_val() ==
-        other.src.get_sort_val() + other.dst.get_sort_val()
+        self.src.get_sort_val() + self.dst.get_sort_val()
+            == other.src.get_sort_val() + other.dst.get_sort_val()
     }
 }
 impl Eq for Filter {}
@@ -36,7 +36,7 @@ impl Ord for Filter {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum HostFilter {
     WildCard,
     IncludeIPs(Vec<IpAddr>),
@@ -46,13 +46,14 @@ pub enum HostFilter {
     Regex(Regex),
 }
 
-#[derive(Deserialize,Clone,Eq)]
-pub struct MacAddr([u8;6]);
+#[derive(Deserialize, Clone, Eq)]
+pub struct MacAddr([u8; 6]);
 
 impl TryFrom<&str> for MacAddr {
     type Error = ConfigError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let bytes: Result<Vec<u8>, _> = value.split(':')
+        let bytes: Result<Vec<u8>, _> = value
+            .split(':')
             .map(|part| u8::from_str_radix(part, 16))
             .collect();
         let bytes = bytes.map_err(|_| ConfigError::InvalidMacAddr(value.to_string()))?;
@@ -60,13 +61,13 @@ impl TryFrom<&str> for MacAddr {
             let mut arr = [0u8; 6];
             arr.copy_from_slice(&bytes);
             Ok(MacAddr(arr))
-        }else{
+        } else {
             Err(ConfigError::InvalidMacAddr(value.to_string()))?
         }
     }
 }
 
-impl PartialEq for MacAddr{
+impl PartialEq for MacAddr {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
@@ -74,22 +75,24 @@ impl PartialEq for MacAddr{
 
 impl Debug for MacAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(self.0.map(|i| format!("{i:0X}"))).finish()
+        f.debug_list()
+            .entries(self.0.map(|i| format!("{i:0X}")))
+            .finish()
     }
 }
 
 impl MacAddr {
-    pub fn build(list: &[u8;6]) -> Self {
+    pub fn build(list: &[u8; 6]) -> Self {
         Self(*list)
     }
 }
 
-#[derive(Debug,Deserialize,Clone,Copy)]
+#[derive(Debug, Deserialize, Clone, Copy)]
 pub enum PacketAction {
     Reset,
     SynReset,
     Monitor,
-    Ignore
+    Ignore,
 }
 
 impl TryFrom<&str> for PacketAction {
@@ -100,7 +103,7 @@ impl TryFrom<&str> for PacketAction {
             "syn_reset" => Ok(Self::SynReset),
             "monitor" => Ok(Self::Monitor),
             "ignore" => Ok(Self::Ignore),
-            _ => Err(ConfigError::UnknownMode(value.to_string()))
+            _ => Err(ConfigError::UnknownMode(value.to_string())),
         }
     }
 }
@@ -113,40 +116,48 @@ impl HostFilter {
             Self::ExcludeIPs(_) => 1,
             Self::IncludeMACs(_) => 2,
             Self::ExcludeMACs(_) => 2,
-            Self::Regex(_) => 4
+            Self::Regex(_) => 4,
         }
     }
 }
 
 pub struct Blacklist {
-    list: Vec<Filter>
+    list: Vec<Filter>,
 }
 
 impl Blacklist {
     pub fn build(list: &[Filter]) -> Self {
-        Self {list: list.to_vec()}
+        Self {
+            list: list.to_vec(),
+        }
     }
     pub fn get_packet_action(
         &self,
-        tcp_details: (IpAddr,  u16, &[u8;6], IpAddr,u16, &[u8;6]),
-        rd: &Resolved
-        ) -> PacketAction {
+        tcp_details: (IpAddr, u16, &[u8; 6], IpAddr, u16, &[u8; 6]),
+        rd: &Resolved,
+    ) -> PacketAction {
         let (src, _src_port, src_mac, dst, _dst_port, dst_mac) = tcp_details;
-        let matched = self.list.iter().find( 
-            |filter|
-            self.in_filter(&filter.src, rd, src, MacAddr(*src_mac)) &&
-            self.in_filter(&filter.dst, rd, dst, MacAddr(*dst_mac)));
+        let matched = self.list.iter().find(|filter| {
+            self.in_filter(&filter.src, rd, src, MacAddr(*src_mac))
+                && self.in_filter(&filter.dst, rd, dst, MacAddr(*dst_mac))
+        });
         if let Some(f) = matched {
-           if let PacketAction::Reset = f.mode {
-               if f.prob < rand::thread_rng().gen_range(0. ..1.) {
-                   return PacketAction::Ignore;
-               }
-           }
+            if let PacketAction::Reset = f.mode {
+                if f.prob < rand::thread_rng().gen_range(0. ..1.) {
+                    return PacketAction::Ignore;
+                }
+            }
         }
         matched.map_or(PacketAction::Ignore, |f| f.mode)
     }
 
-    fn in_filter(&self, filter: &HostFilter, rd: &Resolved, ip_addr: IpAddr, mac_addr: MacAddr) -> bool {
+    fn in_filter(
+        &self,
+        filter: &HostFilter,
+        rd: &Resolved,
+        ip_addr: IpAddr,
+        mac_addr: MacAddr,
+    ) -> bool {
         match filter {
             HostFilter::WildCard => true,
             HostFilter::IncludeIPs(l) => l.iter().any(|i| *i == ip_addr),
@@ -159,7 +170,9 @@ impl Blacklist {
                     domain = rd.resolve(&ip_addr).ok();
                 };
                 if let Some(d) = domain {
-                    if rgx.is_match(&d) {return true}
+                    if rgx.is_match(&d) {
+                        return true;
+                    }
                 }
 
                 let ip = match ip_addr {
@@ -190,17 +203,20 @@ mod tests {
 
     // use crate::configs::Config;
     use super::{Filter, HostFilter, MacAddr, PacketAction};
-    use std::{net::{IpAddr, Ipv4Addr}, assert_ne};
+    use std::{
+        assert_ne,
+        net::{IpAddr, Ipv4Addr},
+    };
     enum FilterType {
         WildCard,
         Regex,
         IncludeIPs,
-        ExcludeIPs
+        ExcludeIPs,
     }
     // static config :Config = Config::build().unwrap();
-    fn create_filter(src:FilterType,dst:FilterType,mode:PacketAction,prob:f64) -> Filter {
+    fn create_filter(src: FilterType, dst: FilterType, mode: PacketAction, prob: f64) -> Filter {
         let default = |c| {
-            let ip_vec =  vec![
+            let ip_vec = vec![
                 IpAddr::V4("192.235.32.2".parse::<Ipv4Addr>().unwrap()),
                 IpAddr::V4("192.255.32.2".parse::<Ipv4Addr>().unwrap()),
                 IpAddr::V4("193.255.32.2".parse::<Ipv4Addr>().unwrap()),
@@ -214,11 +230,11 @@ mod tests {
             }
         };
 
-        Filter { 
+        Filter {
             src: default(src),
             dst: default(dst),
             mode,
-            prob
+            prob,
         }
     }
     #[test]
@@ -239,18 +255,18 @@ mod tests {
     fn similar_macs_are_equal() {
         let mac = "84:c5:a6:15:29:d0";
         let a = MacAddr::try_from(mac).unwrap();
-        let b = MacAddr::build(&[0x84, 0xc5, 0xa6, 0x15, 0x29, 0xd0 ]);
+        let b = MacAddr::build(&[0x84, 0xc5, 0xa6, 0x15, 0x29, 0xd0]);
         assert_eq!(a, b);
     }
     #[test]
     fn different_macs_are_not_equal() {
         let mac = "84:c5:a6:15:29:d0";
         let a = MacAddr::try_from(mac).unwrap();
-        let b = MacAddr::build(&[0x54, 0xc5, 0xa6, 0x15, 0x29, 0xd0 ]);
+        let b = MacAddr::build(&[0x54, 0xc5, 0xa6, 0x15, 0x29, 0xd0]);
         assert_ne!(a, b);
     }
     #[test]
-    #[should_panic(expected="InvalidMacAddr")]
+    #[should_panic(expected = "InvalidMacAddr")]
     fn panics_on_invalid_str_to_mac() {
         let mac = "84:c5:a6:15:2z:d0";
         let _val = MacAddr::try_from(mac).unwrap();

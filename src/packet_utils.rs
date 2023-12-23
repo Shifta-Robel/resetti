@@ -6,29 +6,29 @@ use std::{
     sync::atomic::{AtomicU32, AtomicU64},
 };
 
-#[derive(Debug,Clone)]
-pub enum Protocol{
+#[derive(Debug, Clone)]
+pub enum Protocol {
     Ipv4(TransportProtocol),
-    Ipv6(TransportProtocol)
+    Ipv6(TransportProtocol),
 }
 
-#[derive(Debug,Clone)]
-pub enum TransportProtocol{
+#[derive(Debug, Clone)]
+pub enum TransportProtocol {
     TCP(TcpFlags),
     UDP(UdpProtocol),
-    Other
+    Other,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum TcpFlags {
     SynAck(bool, bool),
-    Other
+    Other,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum UdpProtocol {
     DNS,
-    Other
+    Other,
 }
 
 pub fn is_ipv4(packet: &Packet) -> bool {
@@ -45,9 +45,9 @@ pub fn syn_ack_flags(tcp_header: &[u8]) -> (bool, bool) {
     (syn, ack)
 }
 
-fn tcp_header_idx(packet: &Packet) -> u8{
+fn tcp_header_idx(packet: &Packet) -> u8 {
     let ihl = &packet[14] & 0b0000_1111;
-    
+
     14 + ihl * 4
 }
 
@@ -58,22 +58,18 @@ pub fn get_protocol(packet: &Packet) -> Protocol {
         match protocol {
             6 => {
                 let ix = tcp_header_idx(packet);
-                let (syn,ack) = syn_ack_flags(&packet.data[ix.into()..]);
+                let (syn, ack) = syn_ack_flags(&packet.data[ix.into()..]);
                 let transport = if syn || ack {
                     TcpFlags::SynAck(syn, ack)
-                }else {
+                } else {
                     TcpFlags::Other
                 };
                 Protocol::Ipv4(TransportProtocol::TCP(transport))
-            },
-            17 => {
-                Protocol::Ipv4(TransportProtocol::UDP(UdpProtocol::DNS))
-            },
-            _ => {
-                Protocol::Ipv4(TransportProtocol::Other)
             }
+            17 => Protocol::Ipv4(TransportProtocol::UDP(UdpProtocol::DNS)),
+            _ => Protocol::Ipv4(TransportProtocol::Other),
         }
-    }else {
+    } else {
         // ipv6 logic
         unimplemented!()
     }
@@ -180,7 +176,7 @@ pub fn build_rst_packet_from(packet: &Packet, is_syn: bool) -> Vec<u8> {
 //
 // #[cfg(target_pointer_width = "32")]
 pub fn checksum_by2(bytes: &[u8]) -> u16 {
-    let mut checksum : u32 = bytes
+    let mut checksum: u32 = bytes
         .chunks_exact(2)
         .map(|c| u32::from_be_bytes([0, 0, c[0], c[1]]))
         .reduce(|a, b| a + b)
@@ -219,21 +215,25 @@ pub fn checksum_2_par(bytes: &[u8]) -> u16 {
 pub fn checksum(bytes: &[u8]) -> u16 {
     let mut checksum = bytes
         .chunks_exact(4)
-        .map(|c| u64::from(u32::from_be_bytes([c[0],c[1],c[2],c[3]])))
-        .reduce(|a,b| a + b)
+        .map(|c| u64::from(u32::from_be_bytes([c[0], c[1], c[2], c[3]])))
+        .reduce(|a, b| a + b)
         .unwrap();
     let len = bytes.len();
     if len % 4 != 0 {
-        let slice = &bytes[len-len%4..];
+        let slice = &bytes[len - len % 4..];
         let mut acc: u32 = 0;
-        for (i,oct) in slice.iter().enumerate() { acc |= (slice[i] as u32) << ((3-i)*8); };
+        for (i, oct) in slice.iter().enumerate() {
+            acc |= (slice[i] as u32) << ((3 - i) * 8);
+        }
         checksum += u64::from(acc);
     }
     while checksum >> 32 != 0 {
         checksum = (checksum & 0xffffffff) + (checksum >> 32)
     }
     let mut checksum = (checksum >> 16) as u32 + (checksum & 0x0000ffff) as u32;
-    if checksum > 0xffff { checksum = (checksum & 0xffff) + 1 }
+    if checksum > 0xffff {
+        checksum = (checksum & 0xffff) + 1
+    }
     !checksum as u16
 }
 
@@ -266,7 +266,7 @@ pub fn checksum_par(bytes: &[u8]) -> u16 {
 
 pub fn src_dst_details<'a>(
     packet: &'a Packet,
-) -> (Ipv4Addr, u16, &'a [u8;6], Ipv4Addr, u16, &'a [u8;6]) {
+) -> (Ipv4Addr, u16, &'a [u8; 6], Ipv4Addr, u16, &'a [u8; 6]) {
     let eth_header = &packet.data[0..14];
     // println!("ethernet_header size {:?}", eth_header.len());
     let src_mac = eth_header[0..6].try_into().unwrap();
@@ -297,7 +297,7 @@ pub fn src_dst_details<'a>(
 /// * payload len
 pub fn tcp_details(tcp_header: &[u8]) -> (u32, u32, u16) {
     // let tcp_header = &packet.data[34..]; //54
-                                         // println!("tcp_header size {:?}", tcp_header.len());
+    // println!("tcp_header size {:?}", tcp_header.len());
     let seq_num = u32::from_be_bytes([tcp_header[4], tcp_header[5], tcp_header[6], tcp_header[7]]);
     // let window_bytes = &tcp_header[12..16];
     let window_bytes = &tcp_header[14..16];
@@ -310,7 +310,7 @@ pub fn tcp_details(tcp_header: &[u8]) -> (u32, u32, u16) {
     );
     // let tcp_data_offset = tcp_header[12] >> 4;
     // let payload_len = packet.len() - (34 + (tcp_data_offset * 4)) as usize;
-    (seq_num, ack_num, window_size )
+    (seq_num, ack_num, window_size)
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use thiserror::Error;
 use toml::Value;
 
 #[derive(Debug, Error)]
-pub enum ConfigError{
+pub enum ConfigError {
     #[error("Failed to find config file")]
     NoConfigFound,
     #[error("No filters found")]
@@ -33,9 +33,8 @@ pub enum ConfigError{
     InvalidMacAddr(String),
 }
 
-
-#[derive(Debug,Error)]
-pub enum DomainError{
+#[derive(Debug, Error)]
+pub enum DomainError {
     #[error("Failed to resolve addr: {0}")]
-    FailedToResolve(IpAddr)
+    FailedToResolve(IpAddr),
 }

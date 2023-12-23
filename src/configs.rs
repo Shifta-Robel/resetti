@@ -157,7 +157,7 @@ struct MidFilter {
     src_mac_exclude: Option<Vec<MacAddr>>,
     dst_mac_exclude: Option<Vec<MacAddr>>,
     mode: Option<PacketAction>,
-    prob: Option<f64>
+    prob: Option<f64>,
 }
 
 impl TryFrom<&toml::Value> for MidFilter {
@@ -175,12 +175,22 @@ impl TryFrom<&toml::Value> for MidFilter {
             .transpose()?;
         let src_mac = value.get("src_mac").map(mac_vec_from_value).transpose()?;
         let dst_mac = value.get("dst_mac").map(mac_vec_from_value).transpose()?;
-        let src_mac_exclude = value.get("src_mac_exclude").map(mac_vec_from_value).transpose()?;
-        let dst_mac_exclude = value.get("dst_mac_exclude").map(mac_vec_from_value).transpose()?;
+        let src_mac_exclude = value
+            .get("src_mac_exclude")
+            .map(mac_vec_from_value)
+            .transpose()?;
+        let dst_mac_exclude = value
+            .get("dst_mac_exclude")
+            .map(mac_vec_from_value)
+            .transpose()?;
         let src_regex = value.get("src_regex").map(string_from_value).transpose()?;
         let dst_regex = value.get("dst_regex").map(string_from_value).transpose()?;
-        let mode = value.get("mode").map(string_from_value).transpose()?
-            .map(|s| PacketAction::try_from(s.as_str())).transpose()?;
+        let mode = value
+            .get("mode")
+            .map(string_from_value)
+            .transpose()?
+            .map(|s| PacketAction::try_from(s.as_str()))
+            .transpose()?;
         // let prob = match value.get("prob"){
         //     Some(v) => Some(prob_from_value(v).and_then(op)?),
         //     None => None
@@ -200,7 +210,7 @@ impl TryFrom<&toml::Value> for MidFilter {
             src_mac_exclude,
             dst_mac_exclude,
             mode,
-            prob
+            prob,
         })
     }
 }
@@ -284,7 +294,9 @@ fn mac_vec_from_value(item: &Value) -> Result<Vec<MacAddr>, ConfigError> {
     let v = item.as_array().ok_or(ConfigError::ExpectedAList)?;
     let mut vec: Vec<MacAddr> = Vec::with_capacity(v.len());
     for i in v {
-        let s = i.as_str().ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
+        let s = i
+            .as_str()
+            .ok_or(ConfigError::FailedToParseAsString(i.clone()))?;
         let s = MacAddr::try_from(s)?;
         vec.push(s)
     }

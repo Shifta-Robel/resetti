@@ -1,23 +1,25 @@
+use anyhow::Result;
 use configs::Config;
 use domains::Resolved;
 use filters::Blacklist;
-use packet_utils::{build_rst_packet_from, src_dst_details, get_protocol, Protocol, TransportProtocol, TcpFlags};
+use packet_utils::{
+    build_rst_packet_from, get_protocol, src_dst_details, Protocol, TcpFlags, TransportProtocol,
+};
 use pcap::{Capture, Packet};
-use anyhow::Result;
-use slog::{info, warn, trace, debug};
+use slog::{debug, info, trace, warn};
 use slog_scope::logger;
 
-use crate::{packet_utils::UdpProtocol, filters::PacketAction, logging::init_logger};
+use crate::{filters::PacketAction, logging::init_logger, packet_utils::UdpProtocol};
 
 // use pretty_env_logger::env_logger::Builder;
 // use log::{info,trace, warn};
 
-mod packet_utils;
 mod configs;
+mod domains;
 mod errors;
 mod filters;
-mod domains;
 mod logging;
+mod packet_utils;
 
 fn main() -> Result<()> {
     let config = Config::build()?;
@@ -35,19 +37,17 @@ fn main() -> Result<()> {
         println!("{f:?}");
     });
 
-    let cap = match config.interface{
-        configs::Interface::Lookup => {
-            pcap::Device::lookup().unwrap().unwrap()
-        },
-        configs::Interface::Custom(dev) => {
-            pcap::Device::from(dev.as_str())
-        }
+    let cap = match config.interface {
+        configs::Interface::Lookup => pcap::Device::lookup().unwrap().unwrap(),
+        configs::Interface::Custom(dev) => pcap::Device::from(dev.as_str()),
     };
 
-
     // let cap = pcap::Device::lookup()?.unwrap();
-    info!(logger(),"Sniffing on interface:  [{}]", cap.name);
-    let cap = Capture::from_device(cap).unwrap().immediate_mode(true).promisc(true);
+    info!(logger(), "Sniffing on interface:  [{}]", cap.name);
+    let cap = Capture::from_device(cap)
+        .unwrap()
+        .immediate_mode(true)
+        .promisc(true);
 
     //open and filter
     let mut cap = cap.open().unwrap();
@@ -57,20 +57,27 @@ fn main() -> Result<()> {
     let filter = format!("{filter_tcp_syn} or {filter_tcp_ack} or ({filter_dns_rsp})");
     cap.filter(&filter, true).unwrap();
 
-    while let Ok(packet) = cap.next_packet(){
-        let (src,src_port,src_mac,dst,dst_port,dst_mac) = src_dst_details(&packet);
+    while let Ok(packet) = cap.next_packet() {
+        let (src, src_port, src_mac, dst, dst_port, dst_mac) = src_dst_details(&packet);
         let src = std::net::IpAddr::V4(src);
         let dst = std::net::IpAddr::V4(dst);
         let arg = (src, src_port, src_mac, dst, dst_port, dst_mac);
 
         match bl.get_packet_action(arg, &domains) {
-            PacketAction::Ignore => {continue;}
-            PacketAction::Monitor => {
-                warn!(logger(), "detected connection src:[{}] -> dst:[{}]", src, dst);
+            PacketAction::Ignore => {
                 continue;
             }
-            PacketAction::Reset => {},
-            PacketAction::SynReset => {unimplemented!()}
+            PacketAction::Monitor => {
+                warn!(
+                    logger(),
+                    "detected connection src:[{}] -> dst:[{}]", src, dst
+                );
+                continue;
+            }
+            PacketAction::Reset => {}
+            PacketAction::SynReset => {
+                unimplemented!()
+            }
         };
 
         let proto = get_protocol(&packet);
@@ -80,37 +87,32 @@ fn main() -> Result<()> {
                 match transport {
                     TransportProtocol::TCP(tcp) => {
                         match tcp {
-                            TcpFlags::SynAck(syn,ack) => {
+                            TcpFlags::SynAck(syn, ack) => {
                                 if ack || syn {
                                     let rst = build_rst_packet_from(&packet, syn);
-                                    let rp = Packet{
+                                    let rp = Packet {
                                         header: packet.header,
-                                        data: &rst
+                                        data: &rst,
                                     };
                                     println!("sending packet:");
                                     src_dst_details(&rp);
                                     // tcp_details(&rp);
                                     // println!("===========");
-                                    if let Err(e) = cap.sendpacket(rst){
+                                    if let Err(e) = cap.sendpacket(rst) {
                                         eprintln!("send-error: {e:?}");
                                     }
                                 }
-                            },
+                            }
                             TcpFlags::Other => {}
                         }
-                    },
-                    TransportProtocol::UDP(u) => {
-                        match u {
-                            UdpProtocol::DNS => {
-                                domains.update_from_dns(packet.data)
-                            },
-                            _ => {}
-                        }
+                    }
+                    TransportProtocol::UDP(u) => match u {
+                        UdpProtocol::DNS => domains.update_from_dns(packet.data),
+                        _ => {}
                     },
                     _ => {}
                 }
-
-            },
+            }
             Protocol::Ipv6(_) => {}
         }
     }
