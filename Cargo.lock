@@ -441,6 +441,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
+name = "resetti"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dns-lookup",
+ "pcap",
+ "rand",
+ "rayon",
+ "regex",
+ "serde",
+ "simple-dns",
+ "slog",
+ "slog-async",
+ "slog-scope",
+ "slog-term",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -558,26 +578,6 @@ name = "take_mut"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
-
-[[package]]
-name = "tcp_resetter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dns-lookup",
- "pcap",
- "rand",
- "rayon",
- "regex",
- "serde",
- "simple-dns",
- "slog",
- "slog-async",
- "slog-scope",
- "slog-term",
- "thiserror",
- "toml",
-]
 
 [[package]]
 name = "term"
