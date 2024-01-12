@@ -1,5 +1,5 @@
 # Resetti  (🚧 WIP... 🚧)
-A packet filtering and monitoring tool written in Rust. It allows you to monitor and/or disrupt selected connections on the network you're connected to
+A packet filtering and monitoring tool written in Rust. It allows you to monitor and/or disrupt selected connections on the network you're connected to. (⚠️Work in progress)
 ### Features:
   - Expressive filtering rules in the config
   - Monitor connections
@@ -36,4 +36,4 @@ src_all = true
 dst_mac = ["AA:BB:CC:DD:EE:FF"]
 ```
 ## Important ⚠️
-Use ethically, it's uncool to tamper with and eavesdrop on people connections
+Intended for ethical use. It's uncool to tamper with and eavesdrop on people connections!
